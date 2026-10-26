@@ -84,27 +84,47 @@ void relax(double *&U, Config &cfg) {
         }
       }
     } else {
-      for (int j = 1; j < Ny - 1; j++) {
-        int i = 1;
-        for (; i + loop - 1 < Nx - 1; i += loop) {
-          switch (loop) {
-          case 1: {
+      switch (loop) {
+      case 1: {
+        for (int j = 1; j < Ny - 1; j++) {
+          for (int i = 0; i + loop - 1 < Nx - 1; i++) {
             update(U, U_next, i, j, Nx, rx, ry);
-            break;
           }
-          case 2: {
+        }
+        break;
+      }
+      case 2: {
+        for (int j = 1; j < Ny - 1; j++) {
+          int i = 1;
+          for (; i + loop - 1 < Nx - 1; i += 2) {
             update(U, U_next, i, j, Nx, rx, ry);
             update(U, U_next, i + 1, j, Nx, rx, ry);
-            break;
           }
-          case 4: {
+          for (; i < Nx - 1; i++) {
+            update(U, U_next, i, j, Nx, rx, ry);
+          }
+        }
+        break;
+      }
+      case 4: {
+        for (int j = 1; j < Ny - 1; j++) {
+          int i = 1;
+          for (; i + loop - 1 < Nx - 1; i += 4) {
             update(U, U_next, i, j, Nx, rx, ry);
             update(U, U_next, i + 1, j, Nx, rx, ry);
             update(U, U_next, i + 2, j, Nx, rx, ry);
             update(U, U_next, i + 3, j, Nx, rx, ry);
-            break;
           }
-          case 8: {
+          for (; i < Nx - 1; i++) {
+            update(U, U_next, i, j, Nx, rx, ry);
+          }
+        }
+        break;
+      }
+      case 8: {
+        for (int j = 1; j < Ny - 1; j++) {
+          int i = 1;
+          for (; i + loop - 1 < Nx - 1; i += 8) {
             update(U, U_next, i, j, Nx, rx, ry);
             update(U, U_next, i + 1, j, Nx, rx, ry);
             update(U, U_next, i + 2, j, Nx, rx, ry);
@@ -113,14 +133,13 @@ void relax(double *&U, Config &cfg) {
             update(U, U_next, i + 5, j, Nx, rx, ry);
             update(U, U_next, i + 6, j, Nx, rx, ry);
             update(U, U_next, i + 7, j, Nx, rx, ry);
-            break;
           }
+          for (; i < Nx - 1; i++) {
+            update(U, U_next, i, j, Nx, rx, ry);
           }
         }
-
-        for (; i < Nx - 1; i++) {
-          update(U, U_next, i, j, Nx, rx, ry);
-        }
+        break;
+      }
       }
     }
 
