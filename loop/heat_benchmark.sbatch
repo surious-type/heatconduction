@@ -25,7 +25,7 @@ fi
 
 # Настраиваемые переменные:
 #   BENCH_MODE=smoke|quick|full (по умолчанию quick)
-#   BENCH_SOURCE=./sequence.loop.bench.cpp
+#   BENCH_SOURCE=./sequence.loop.cpp
 #   BENCH_THREADS=1 (для OpenMP — например 1,2,4,8,16,36)
 #   BENCH_LOOPS=1,2,4,8
 #   BENCH_PROFILES=O2,O3,native,unroll,novec
