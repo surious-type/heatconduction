@@ -1,0 +1,5 @@
+loop/bench_results/*
+!loop/bench_results/.gitkeep
+sequence
+Структура_отчёта.md
+
