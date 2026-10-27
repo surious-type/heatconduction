@@ -80,18 +80,18 @@ void relax(double *&U, Config &cfg) {
           U_next[k] = U[k] + rx * (U[k + 1] - 2 * U[k] + U[k - 1]) +
                       ry * (U[k - Nx] - 2 * U[k] + U[k + Nx]) +
                       tau * f(tn, x, y, a, Lx, Ly);
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
         }
+        // Граничные условия Неймана - второго рода
+        U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
+        U_next[j * Nx + Nx - 1] =
+            (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
       }
     } else {
       switch (loop) {
       case 1: {
 #pragma omp for schedule(static)
         for (int j = 1; j < Ny - 1; j++) {
-          for (int i = 0; i + loop - 1 < Nx - 1; i++) {
+          for (int i = 1; i < Nx - 1; i++) {
             update(U, U_next, i, j, Nx, rx, ry);
             // Граничные условия Неймана - второго рода
             U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
@@ -105,7 +105,7 @@ void relax(double *&U, Config &cfg) {
 #pragma omp for schedule(static)
         for (int j = 1; j < Ny - 1; j++) {
           int i = 1;
-          for (; i + loop - 1 < Nx - 1; i += 2) {
+          for (; i + 1 < Nx - 1; i += 2) {
             update(U, U_next, i, j, Nx, rx, ry);
             update(U, U_next, i + 1, j, Nx, rx, ry);
           }
@@ -123,7 +123,7 @@ void relax(double *&U, Config &cfg) {
 #pragma omp for schedule(static)
         for (int j = 1; j < Ny - 1; j++) {
           int i = 1;
-          for (; i + loop - 1 < Nx - 1; i += 4) {
+          for (; i + 3 < Nx - 1; i += 4) {
             update(U, U_next, i, j, Nx, rx, ry);
             update(U, U_next, i + 1, j, Nx, rx, ry);
             update(U, U_next, i + 2, j, Nx, rx, ry);
@@ -143,7 +143,7 @@ void relax(double *&U, Config &cfg) {
 #pragma omp for schedule(static)
         for (int j = 1; j < Ny - 1; j++) {
           int i = 1;
-          for (; i + loop - 1 < Nx - 1; i += 8) {
+          for (; i + 7 < Nx - 1; i += 8) {
             update(U, U_next, i, j, Nx, rx, ry);
             update(U, U_next, i + 1, j, Nx, rx, ry);
             update(U, U_next, i + 2, j, Nx, rx, ry);

@@ -87,7 +87,7 @@ void relax(double *&U, Config &cfg) {
       switch (loop) {
       case 1: {
         for (int j = 1; j < Ny - 1; j++) {
-          for (int i = 0; i + loop - 1 < Nx - 1; i++) {
+          for (int i = 1; i + loop - 1 < Nx - 1; i++) {
             update(U, U_next, i, j, Nx, rx, ry);
           }
         }
