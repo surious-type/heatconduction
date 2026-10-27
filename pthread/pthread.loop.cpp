@@ -313,8 +313,8 @@ void relax(double *&U, const Config &cfg) {
          << endl;
 
     ofstream f("bechmark_pthread_loop.csv", ios::app);
-    f << loop << ";" << time << ";" << mlups << ";" << N << ";" << Nx << ";"
-      << Ny << endl;
+    f << cfg.threads << ";" << loop << ";" << time << ";" << mlups << ";" << N
+      << ";" << Nx << ";" << Ny << '\n';
     f.close();
   }
 
