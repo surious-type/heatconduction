@@ -93,11 +93,11 @@ void relax(double *&U, Config &cfg) {
         for (int j = 1; j < Ny - 1; j++) {
           for (int i = 1; i < Nx - 1; i++) {
             update(U, U_next, i, j, Nx, rx, ry);
-            // Граничные условия Неймана - второго рода
-            U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-            U_next[j * Nx + Nx - 1] =
-                (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
           }
+          // Граничные условия Неймана - второго рода
+          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
+          U_next[j * Nx + Nx - 1] =
+              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
         }
         break;
       }
