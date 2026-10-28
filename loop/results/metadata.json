@@ -1,0 +1,32 @@
+{
+  "method": "loop",
+  "source_jobs": "18477",
+  "measurements": 400,
+  "configurations": 80,
+  "repetitions": 5,
+  "grids": [
+    512,
+    1024,
+    2048,
+    4096
+  ],
+  "unroll": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "compiler_profiles": {
+    "O2": "-O2",
+    "O3": "-O3",
+    "native": "-O3 -march=skylake-avx512",
+    "unroll": "-O3 -march=skylake-avx512 -funroll-loops",
+    "novec": "-O3 -march=skylake-avx512 -fno-tree-vectorize"
+  },
+  "threads": [
+    1
+  ],
+  "source": "Original measured time_s values preserved from experiment archives; MLUPS recomputed from counts and time_s.",
+  "limitation": "Original per-run timestamps and hosts are not included in compact transfer; originals remain in experiment archives.",
+  "comparability": "OpenMP used 2x more time steps than loop and pthread; compare MLUPS or normalized ns/update, not wall time."
+}
