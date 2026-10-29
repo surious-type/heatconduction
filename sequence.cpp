@@ -23,15 +23,9 @@ double u_exact(double t, double x, double y, double Lx, double Ly) {
   return (1.0 + t) * cos(x * M_PI / Lx) * sin(y * M_PI / Ly);
 }
 
-double f(double t, double x, double y, double a, double Lx, double Ly,
-         bool debug) {
-  if (debug) {
-    return (1 +
-            a * a * (1 + t) * M_PI * M_PI * (1 / (Lx * Lx) + 1 / (Ly * Ly))) *
-           cos(x * M_PI / Lx) * sin(y * M_PI / Ly);
-  } else {
-    return 0;
-  }
+double f(double t, double x, double y, double a, double Lx, double Ly) {
+  return (1 + a * a * (1 + t) * M_PI * M_PI * (1 / (Lx * Lx) + 1 / (Ly * Ly))) *
+         cos(x * M_PI / Lx) * sin(y * M_PI / Ly);
 }
 
 void relax(double *&U, Config &cfg) {
@@ -68,19 +62,32 @@ void relax(double *&U, Config &cfg) {
 
     // Внутренние узлы
     double tn = t0 + n * tau;
-    for (int j = 1; j < Ny - 1; j++) {
-      for (int i = 1; i < Nx - 1; i++) {
-        double x = i * hx;
-        double y = j * hy;
-        U_next[j * Nx + i] =
-            U[j * Nx + i] +
-            rx * (U[j * Nx + i + 1] - 2 * U[j * Nx + i] + U[j * Nx + i - 1]) +
-            ry * (U[(j + 1) * Nx + i] - 2 * U[j * Nx + i] +
-                  U[(j - 1) * Nx + i]) +
-            tau * f(tn, x, y, a, Lx, Ly, cfg.debug);
+    if (cfg.debug) {
+      for (int j = 1; j < Ny - 1; j++) {
+        for (int i = 1; i < Nx - 1; i++) {
+          double x = i * hx;
+          double y = j * hy;
+          U_next[j * Nx + i] =
+              U[j * Nx + i] +
+              rx * (U[j * Nx + i + 1] - 2 * U[j * Nx + i] + U[j * Nx + i - 1]) +
+              ry * (U[(j + 1) * Nx + i] - 2 * U[j * Nx + i] +
+                    U[(j - 1) * Nx + i]) +
+              tau * f(tn, x, y, a, Lx, Ly);
+        }
+      }
+    } else {
+      for (int j = 1; j < Ny - 1; j++) {
+        for (int i = 1; i < Nx - 1; i++) {
+          double x = i * hx;
+          double y = j * hy;
+          U_next[j * Nx + i] =
+              U[j * Nx + i] +
+              rx * (U[j * Nx + i + 1] - 2 * U[j * Nx + i] + U[j * Nx + i - 1]) +
+              ry * (U[(j + 1) * Nx + i] - 2 * U[j * Nx + i] +
+                    U[(j - 1) * Nx + i]);
+        }
       }
     }
-
     // Граничные условия Неймана - второго рода
     for (int j = 1; j < Ny - 1; j++) {
       U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
