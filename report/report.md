@@ -1,9 +1,27 @@
 ---
-title: "Численное решение двумерного уравнения теплопроводности: последовательная оптимизация, OpenMP и Pthreads"
-author: "Отчёт по параллельному программированию"
-date: "28 октября 2026 г."
 lang: ru-RU
+header-includes:
+  - \usepackage{graphicx}
 ---
+
+<div class="report-cover" align="center">
+<p><strong>МОСКОВСКИЙ ГОСУДАРСТВЕННЫЙ УНИВЕРСИТЕТ<br>
+ИМЕНИ М. В. ЛОМОНОСОВА</strong></p>
+<p><strong>ФИЛИАЛ МОСКОВСКОГО ГОСУДАРСТВЕННОГО УНИВЕРСИТЕТА<br>
+ИМЕНИ М. В. ЛОМОНОСОВА В ГОРОДЕ САРОВЕ</strong></p>
+<p><img src="assets/msu-building.png" alt="Главное здание МГУ" width="300"></p>
+<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>
+<p><strong>Отчёт:</strong></p>
+<p>«Численное решение двумерного уравнения теплопроводности:<br>
+последовательная оптимизация, OpenMP и Pthreads»</p>
+<p>&nbsp;</p><p>&nbsp;</p>
+<p align="right">Выполнил студент<br>
+2-го курса магистратуры<br>
+Василенко Д.О.<br>
+Группа: СКТ-225</p>
+<p>&nbsp;</p><p>&nbsp;</p>
+<p>Саров 2026</p>
+</div>
 
 # Постановка задачи
 
@@ -649,4 +667,23 @@ g++ -std=c++17 -O3 sequence.cpp -o sequence
 g++ -std=c++17 -O3 loop/sequence.loop.cpp -o heat_loop
 g++ -std=c++17 -O3 -fopenmp openmp/openmp.loop.cpp -o heat_omp
 g++ -std=gnu++17 -O3 -pthread pthread/pthread.loop.cpp -o heat_pthread
+```
+
+## Экспорт отчёта в PDF
+
+Для формирования титульного листа по образцу и автоматического оглавления используйте Pandoc с включённым Lua-фильтром. Команду следует запускать из каталога `report` после установки Pandoc, XeLaTeX и пакета `texlive-lang-cyrillic`:
+
+```bash
+cd report
+pandoc report.md -o report.pdf \
+  --lua-filter=titlepage.lua \
+  --pdf-engine=xelatex \
+  --resource-path=".:.." \
+  --toc --number-sections \
+  -V mainfont="DejaVu Serif" \
+  -V monofont="DejaVu Sans Mono" \
+  -V lang=ru-RU \
+  -V papersize=a4 \
+  -V geometry:margin=2.4cm \
+  -V fontsize=11pt
 ```
