@@ -1,5 +1,6 @@
 ---
 lang: ru-RU
+toc-title: Содержание
 header-includes:
   - \usepackage{graphicx}
   - \usepackage{float}
@@ -7,6 +8,8 @@ header-includes:
   - \usepackage{needspace}
   - \setlength{\tabcolsep}{4pt}
   - \renewcommand{\arraystretch}{1.15}
+  - \let\reportOriginalTableOfContents\tableofcontents
+  - \renewcommand{\tableofcontents}{\clearpage\reportOriginalTableOfContents\clearpage}
 ---
 
 <div class="report-cover" align="center">
