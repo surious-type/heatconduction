@@ -52,3 +52,39 @@ function Div(el)
     return {}
   end
 end
+
+
+-- Печатная верстка: большие разделы начинаются с новой страницы,
+-- а подразделы переносятся целиком с началом следующего абзаца.
+-- На HTML-предпросмотр GitHub команды LaTeX не влияют.
+local first_chapter_seen = false
+
+function Header(el)
+  if el.level == 1 then
+    if not first_chapter_seen then
+      first_chapter_seen = true
+      return el
+    end
+    return { pandoc.RawBlock('latex', '\\clearpage'), el }
+  elseif el.level == 2 then
+    return { pandoc.RawBlock('latex', '\\Needspace{9\\baselineskip}'), el }
+  end
+end
+
+-- Фиксированные относительные ширины колонок таблицы параметров.
+-- Без этого Pandoc может выделить слишком мало места длинным заголовкам.
+function Table(el)
+  local rows = el.head.rows
+  if #rows > 0 and #rows[1].cells > 0 then
+    local first = pandoc.utils.stringify(rows[1].cells[1].contents)
+    if first == 'Параметр' and #el.colspecs == 4 then
+      el.colspecs = {
+        {pandoc.AlignLeft, 0.17},
+        {pandoc.AlignLeft, 0.15},
+        {pandoc.AlignRight, 0.20},
+        {pandoc.AlignLeft, 0.48},
+      }
+      return el
+    end
+  end
+end
