@@ -668,22 +668,3 @@ g++ -std=c++17 -O3 loop/sequence.loop.cpp -o heat_loop
 g++ -std=c++17 -O3 -fopenmp openmp/openmp.loop.cpp -o heat_omp
 g++ -std=gnu++17 -O3 -pthread pthread/pthread.loop.cpp -o heat_pthread
 ```
-
-## Экспорт отчёта в PDF
-
-Для формирования титульного листа по образцу и автоматического оглавления используйте Pandoc с включённым Lua-фильтром. Команду следует запускать из каталога `report` после установки Pandoc, XeLaTeX и пакета `texlive-lang-cyrillic`:
-
-```bash
-cd report
-pandoc report.md -o report.pdf \
-  --lua-filter=titlepage.lua \
-  --pdf-engine=xelatex \
-  --resource-path=".:.." \
-  --toc --number-sections \
-  -V mainfont="DejaVu Serif" \
-  -V monofont="DejaVu Sans Mono" \
-  -V lang=ru-RU \
-  -V papersize=a4 \
-  -V geometry:margin=2.4cm \
-  -V fontsize=11pt
-```
