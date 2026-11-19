@@ -36,8 +36,20 @@ mkdir -p "$result_dir"
 workdir=$(mktemp -d "${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/heatcond_XXXXXX")
 trap 'rm -rf -- "$workdir"' EXIT
 cp "$build_dir"/{heat_loop,heat_omp,heat_pthread} "$workdir/"
+if [[ ! -f "$build_dir/lib/libstdc++.so.6" ||
+      ! -f "$build_dir/lib/libgcc_s.so.1" ||
+      ! -f "$build_dir/lib/libgomp.so.1" ]]; then
+  echo "Не найдены библиотеки GCC 7.4 в $build_dir/lib" >&2
+  echo "Повторите сборку: PROFILES=$profile bash scripts/prepare_binaries.sh" >&2
+  exit 1
+fi
+mkdir -p "$workdir/lib"
+cp "$build_dir/lib/"*.so* "$workdir/lib/"
 cp "$project/scripts/run_bench.sh" "$workdir/"
 cd "$workdir"
+
+# Предпочитаем поставляемые с бинарниками библиотеки GCC системным.
+export LD_LIBRARY_PATH="$workdir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 echo "Профиль: $profile; повторение: $repeat"
 echo "Запуск предварительно собранных программ из $build_dir"
