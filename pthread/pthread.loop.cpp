@@ -75,13 +75,13 @@ void barrier(int thread_num, Data *data, int n) {
     sem_wait(&b->sem[thread_num]);
 
   if (thread_num == 0) {
-    swap(data->U, data->U_next);
-
-    if (!data->cfg->debug) {
-      if (n == 0)
+    if (n == -1) {
+      // Все рабочие нити готовы: начинаем измерение перед первым шагом.
+      if (!data->cfg->debug)
         data->start = chrono::steady_clock::now();
-
-      if (n == data->cfg->N - 1)
+    } else {
+      swap(data->U, data->U_next);
+      if (n == data->cfg->N - 1 && !data->cfg->debug)
         data->end = chrono::steady_clock::now();
     }
   }
@@ -143,6 +143,8 @@ void *worker(void *argument) {
   double Ly = cfg->Ly;
   int j_start = args->j_start;
   int j_stop = args->j_stop;
+
+  barrier(args->thread_num, data, -1);  // синхронный старт всех нитей
 
   for (int n = 0; n < N; n++) {
     double *U = data->U;
@@ -304,7 +306,7 @@ void relax(double *&U, const Config &cfg) {
   if (!cfg.debug) {
     double time = std::chrono::duration<double>(data.end - data.start).count();
 
-    double updates = double(N - 1) * (Nx - 2) * (Ny - 2);
+    double updates = double(N) * (Nx - 2) * (Ny - 2);
 
     double mlups = updates / (time * 1e6);
 
@@ -358,10 +360,10 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2);
+  error_l2 = sqrt(error_l2 / (double(Nx) * Ny));
 
   cout << "C-норма: " << error_inf << endl;
-  cout << "l2-норма: " << error_l2 << endl;
+  cout << "RMSE: " << error_l2 << endl;
 }
 
 void validate(Config &cfg) {
