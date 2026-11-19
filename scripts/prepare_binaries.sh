@@ -25,8 +25,20 @@ for profile in ${PROFILES:-O2 O3 native unroll novec}; do
   echo "Сборка $profile: $flags"
   OPT_FLAGS="$flags" bash scripts/build.sh
 
-  mkdir -p "$out/$profile"
+  mkdir -p "$out/$profile/lib"
   cp heat_original heat_loop heat_omp heat_pthread "$out/$profile/"
+
+  # Компилятор GCC 7.4 использует собственные библиотеки времени выполнения.
+  # Копируем их рядом с бинарниками: на вычислительном узле системная libstdc++
+  # может быть старее и не содержать нужных версий GLIBCXX и CXXABI.
+  for library in libstdc++.so.6 libgcc_s.so.1 libgomp.so.1; do
+    path=$("$cxx" -print-file-name="$library")
+    if [[ "$path" != /* || ! -f "$path" ]]; then
+      echo "Не удалось найти $library для $cxx: $path" >&2
+      exit 1
+    fi
+    cp -L "$path" "$out/$profile/lib/$library"
+  done
 done
 
 echo "Готовые программы сохранены в $out/"
