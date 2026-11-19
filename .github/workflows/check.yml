@@ -3,7 +3,7 @@ name: Проверка сборки и корректности
 on:
   push:
     branches:
-      - feat/first-touch-and-loop-cycles-20261119
+      - main
   pull_request:
 
 jobs:
