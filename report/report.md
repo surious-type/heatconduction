@@ -679,7 +679,9 @@ bash scripts/build.sh
 
 ## Скрипты запуска
 
-Для получения локальной таблицы ошибок применяется `scripts/run_errors.sh`. Для повторных измерений производительности используется `scripts/run_bench.sh`: он запускает последовательную, OpenMP и Pthreads версии на **одинаковых** размерах сеток и временных шагах, перебирает $q=1,2,4,8$, количество нитей и пять повторений. Результаты сохраняются в CSV. На кластере скрипт необходимо запускать через систему очередей.
+Для получения локальной таблицы ошибок используется `scripts/run_errors.sh`. Для производительности применяется `scripts/run_bench.sh`: одинаковые размеры сеток и временные шаги для последовательной, OpenMP и Pthreads версий, значения $q=1,2,4,8$, число нитей и пять повторений. Каждый CSV содержит профиль компиляции.
+
+Скрипт `scripts/run_profiles.sh` автоматически пересобирает программу с пятью профилями оптимизации, приведёнными в разделе «Влияние оптимизаций компилятора», затем сохраняет результаты в файлы `bench_profiles/O2.csv`, `bench_profiles/O3.csv`, `bench_profiles/native.csv`, `bench_profiles/unroll.csv`, `bench_profiles/novec.csv`. Для сравнения на том же оборудовании используется `ARCH=skylake-avx512`; на другой архитектуре необходимо явно указать целевую архитектуру и не смешивать полученные данные.
 
 ### Сборка и проверка ошибки
 
@@ -688,13 +690,22 @@ bash scripts/build.sh
 bash scripts/run_errors.sh ./heat_loop errors.csv
 ```
 
-### Измерение производительности
+### Измерение производительности (один профиль)
 
 ```bash
-REPEATS=5 THREADS="1 2 4 8 16 18 36" bash scripts/run_bench.sh
+OPT_FLAGS="-O3" bash scripts/build.sh
+PROFILE="O3" REPEATS=5 bash scripts/run_bench.sh bench_O3.csv
 ```
 
-Полный текст простых скриптов размещён в репозитории: [`scripts/build.sh`](../scripts/build.sh), [`scripts/run_errors.sh`](../scripts/run_errors.sh) и [`scripts/run_bench.sh`](../scripts/run_bench.sh). Полный текст скрипта повторных измерений:
+### Измерения для пяти профилей
+
+```bash
+ARCH=skylake-avx512 REPEATS=5 bash scripts/run_profiles.sh
+```
+
+Для одного профиля можно задать `PROFILES="O2"`. Всего при пяти повторениях выполняется 1200 запусков на профиль, поэтому на кластере можно выделить отдельное Slurm-задание каждому профилю.
+
+Полный текст скрипта повторных измерений (`scripts/run_bench.sh`):
 
 ```bash
 #!/usr/bin/env bash
@@ -703,7 +714,8 @@ set -euo pipefail
 output="${1:-bench_$(date +%Y%m%d_%H%M%S).csv}"
 repeats="${REPEATS:-5}"
 threads="${THREADS:-1 2 4 8 16 18 36}"
-echo "method,nx,ny,steps,t1,a,threads,unroll,repeat,time_s,mlups,checksum" > "$output"
+profile="${PROFILE:-O3}"
+echo "profile,method,nx,ny,steps,t1,a,threads,unroll,repeat,time_s,mlups,checksum" > "$output"
 
 for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
   read -r nx steps <<< "$config"
@@ -724,7 +736,7 @@ for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
           mlups=$(awk '/^MLUPS:/ {print $2}' <<< "$result")
           checksum=$(awk '/^Checksum:/ {print $2}' <<< "$result")
           [[ -n "$time_s" && -n "$mlups" && -n "$checksum" ]] || exit 1
-          echo "$method,$nx,$nx,$steps,0.001,0.1,$p,$q,$rep,$time_s,$mlups,$checksum" >> "$output"
+          echo "$profile,$method,$nx,$nx,$steps,0.001,0.1,$p,$q,$rep,$time_s,$mlups,$checksum" >> "$output"
         done
       done
     done
@@ -733,3 +745,31 @@ done
 
 echo "Результаты: $output"
 ```
+
+Скрипт перебора профилей (`scripts/run_profiles.sh`):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+dir="${RESULT_DIR:-bench_profiles}"
+arch="${ARCH:-skylake-avx512}"
+mkdir -p "$dir"
+
+for profile in ${PROFILES:-O2 O3 native unroll novec}; do
+  case "$profile" in
+    O2) flags="-O2" ;;
+    O3) flags="-O3" ;;
+    native) flags="-O3 -march=$arch" ;;
+    unroll) flags="-O3 -march=$arch -funroll-loops" ;;
+    novec) flags="-O3 -march=$arch -fno-tree-vectorize" ;;
+    *) echo "Неизвестный профиль: $profile" >&2; exit 1 ;;
+  esac
+
+  echo "Профиль $profile: $flags"
+  OPT_FLAGS="$flags" bash scripts/build.sh
+  PROFILE="$profile" bash scripts/run_bench.sh "$dir/$profile.csv"
+done
+```
+
+Оба скрипта нужно запускать на вычислительном узле через систему очередей.
