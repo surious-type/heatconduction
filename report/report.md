@@ -288,8 +288,9 @@ $$
 $$
 
 $$
-\|e\|_{\ell_2}=
-\sqrt{\sum_{j=0}^{N_y-1}\sum_{i=0}^{N_x-1}e_{i,j}^2}.
+\|e\|_{L_2,h}=
+\sqrt{h_xh_y\sum_{j=0}^{N_y-1}\sum_{i=0}^{N_x-1}e_{i,j}^2}
+\approx \left(\int_{\Omega}|e(x,y)|^2\,dx\,dy\right)^{1/2}.
 \tag{19}
 $$
 
@@ -306,16 +307,21 @@ for (int j = 0; j < Ny; ++j) {
     error_l2 += error * error;
   }
 }
-error_l2 = sqrt(error_l2);
+error_l2 = sqrt(hx * hy * error_l2);
 ```
 
-## Проверка последовательной версии
+## Проверка сходимости на сгущающихся сетках
 
-| Сетка $N_x\times N_y$ | Шагов $N$ |   $\|e\|_C$ | $\|e\|_{\ell_2}$ |
-| :-------------------- | --------: | ----------: | ---------------: |
-| $50\times25$          |       500 |  0,00579924 |         0,103473 |
-| $100\times50$         |      1000 |  0,00141606 |        0,0503893 |
-| $150\times75$         |      2250 | 0,000625213 |        0,0333003 |
+При $L_x=L_y=1$, $a=0{,}1$, $t_0=0$, $t_1=0{,}01$ приняты согласованные шаги $\tau=10h^2$. В режиме проверки применяются четыре сетки:
+
+| $h_x=h_y$ | $N_x=N_y$ | $\tau$ | Шагов $N$ |
+| ---------: | --------: | --------: | --------: |
+| 0,01       | 101       | 0,001       | 10   |
+| 0,005      | 201       | 0,00025     | 40   |
+| 0,0025     | 401       | 0,0000625   | 160  |
+| 0,00125    | 801       | 0,000015625 | 640  |
+
+Таблицу ошибок и наблюдаемый порядок сходимости заполним **после повторных локальных запусков** по сеточной $L_2$-норме; прежние значения невзвешенной дискретной нормы сюда не переносим. Множитель $h_xh_y$ — это вес квадратурной формулы, а не усреднение по числу узлов.
 
 В оптимизированных программах дополнительно выводится `Checksum` $=\sum_k U[k]^2$; он полезен для обнаружения грубых расхождений между реализациями, но не заменяет проверки норм (18)–(19).
 
@@ -422,12 +428,12 @@ if (N < N_min) {
 
 ## Режим производительности и MLUPS
 
-В производительном режиме $f=0$, а измеряется только часть алгоритма после первого «прогревочного» временного шага. Метрика **MLUPS** (`Million Lattice Updates Per Second`) — миллионы обновлений внутренних узлов в секунду:
+В производительном режиме $f=0$. Замер охватывает **все $N$ временных шагов** после завершения инициализации массивов. Метрика **MLUPS** (`Million Lattice Updates Per Second`) — миллионы обновлений внутренних узлов в секунду:
 
 $$
 \boxed{
 \mathrm{MLUPS}=
-\frac{(N-1)(N_x-2)(N_y-2)}
+\frac{N(N_x-2)(N_y-2)}
 {10^6\,T_{\mathrm{measure}}}
 }.
 \tag{20}
@@ -447,36 +453,23 @@ $$
 
 Основная вычислительная работа состоит в применении пятиточечного шаблона ко всем внутренним узлам на каждом временном слое. Выбранный порядок `j` — внешний, `i` — внутренний обеспечивает последовательный доступ к памяти в направлении $x$.
 
-В файле [`loop/sequence.loop.cpp`](../loop/sequence.loop.cpp) вычисление одного узла вынесено в короткую встраиваемую функцию:
+## Группировка итераций внутреннего цикла
 
-```cpp
-inline void update(const double *U, double *U_next,
-                   int i, int j, int Nx, double rx, double ry) {
-  int k = j * Nx + i;
-  U_next[k] = U[k]
-    + rx * (U[k + 1] - 2 * U[k] + U[k - 1])
-    + ry * (U[k - Nx] - 2 * U[k] + U[k + Nx]);
-}
-```
-
-В режиме измерений эта версия не вызывает тригонометрические функции при обновлении внутренних узлов; это важно при сравнении с начальной `sequence.cpp`.
-
-## Ручная раскрутка циклов
-
-Поддерживаются коэффициенты $q\in\{1,2,4,8\}$ через `--loop q`. При $q=4$ одна итерация внутреннего цикла выполняет обновление четырёх последовательных узлов:
+Поддерживаются коэффициенты $q\in\{1,2,4,8\}$ через `--loop q`. Узлы группируются по $q$; оставшиеся элементы обрабатываются отдельным циклом. Используется обычная функция с параметром `block`, без шаблонов и перечисления вызовов:
 
 ```cpp
 int i = 1;
-for (; i + 3 < Nx - 1; i += 4) {
-  update(U, U_next, i,     j, Nx, rx, ry);
-  update(U, U_next, i + 1, j, Nx, rx, ry);
-  update(U, U_next, i + 2, j, Nx, rx, ry);
-  update(U, U_next, i + 3, j, Nx, rx, ry);
+for (; i + block <= Nx - 1; i += block) {
+  for (int k = 0; k < block; ++k) {
+    // Применение разностной схемы к узлу (i + k, j).
+  }
 }
 for (; i < Nx - 1; ++i) {
-  update(U, U_next, i, j, Nx, rx, ry);
+  // Применение той же схемы к оставшимся узлам.
 }
 ```
+
+Такая группировка **не означает автоматического разворачивания цикла**: оно зависит от оптимизатора. Влияние параметра `block` проверяется экспериментально; результаты старых запусков к новой реализации напрямую не применимы.
 
 ## Влияние оптимизаций компилятора
 
@@ -514,20 +507,23 @@ gcc -march=native -Q --help=target | grep march
 
 ## OpenMP
 
-В [`openmp/openmp.loop.cpp`](../openmp/openmp.loop.cpp) параллельная область создаётся **один раз** на все временные шаги, что уменьшает накладные расходы относительно создания новой команды нитей на каждой итерации. Строки распределяются статически:
+В [`openmp/openmp.loop.cpp`](../openmp/openmp.loop.cpp) параллельная область создаётся **один раз** для инициализации и всех временных шагов. Оба массива инициализируются распределённым циклом `schedule(static)` (**first touch**), а последующие расчёты используют статическое распределение строк. При привязке нитей это способствует локальному размещению страниц памяти в NUMA-системе:
 
 ```cpp
 #pragma omp parallel
-for (int n = 0; n < N; ++n) {
+{
 #pragma omp for schedule(static)
-  for (int j = 1; j < Ny - 1; ++j) {
-    // Обновление внутренних узлов строки j.
-    // Затем обработка границ x=0 и x=Lx для той же строки.
+  for (int j = 0; j < Ny; ++j) {
+    // Инициализация U и U_next для всей строки j.
   }
 
+  for (int n = 0; n < N; ++n) {
+#pragma omp for schedule(static)
+    for (int j = 1; j < Ny - 1; ++j) {
+      // Расчёт внутренних узлов и границ строки j.
+    }
 #pragma omp single
-  {
-    swap(U, U_next);
+    { swap(U, U_next); }
   }
 }
 ```
@@ -535,7 +531,7 @@ for (int n = 0; n < N; ++n) {
 Число потоков задаётся средой OpenMP, например:
 
 ```bash
-OMP_NUM_THREADS=8 ./openmp.loop --Nx 100 --Ny 50 --N 1000 --a 0.1 --Lx 2 --Ly 1 --loop 4 --debug 0
+OMP_NUM_THREADS=8 ./heat_omp --Nx 100 --Ny 50 --N 1000 --a 0.1 --Lx 2 --Ly 1 --loop 4 --debug 0
 ```
 
 ## Pthreads
@@ -552,7 +548,7 @@ j_{\mathrm{stop}}(p)=1+\left\lfloor
 \tag{22}
 $$
 
-Это разбиение покрывает все внутренние строки без пересечений, даже если $N_y-2$ не делится на $P$:
+Это разбиение покрывает все внутренние строки без пересечений. Перед вычислениями каждая рабочая нить инициализирует соответствующие строки обоих массивов; крайние строки дополнительно инициализируют первая и последняя нити. Затем выполняется общий барьер. Буферы выделяются без предварительного обнуления. Такой порядок реализует **first touch**; для гарантированной локальности на NUMA-узле привязку нитей задают средствами запуска и системы очередей, а не отдельной функцией в программе:
 
 ```cpp
 args[i].j_start = 1 + (Ny - 2) * i / num_threads;
@@ -561,6 +557,8 @@ args[i].j_stop =
 args[i].data = &data;
 pthread_create(&threads[i], NULL, worker, &args[i]);
 ```
+
+Внутри `worker()` инициализация выполняется в цикле по закреплённым за нитью строкам до первого шага по времени. В POSIX-системах можно применить `mmap()`, но для first touch он не требуется: достаточно `new double[size]` без `{}` и последующей параллельной записи.
 
 Для синхронизации реализован собственный **древовидный барьер на POSIX-семафорах** (`sem_wait/sem_post`): каждый поток ожидает завершения дочерних потоков в бинарном дереве, затем сигнализирует родителю; поток с номером 0 после сбора всех сигналов меняет местами указатели и распространяет разрешение на следующий временной шаг обратно вниз по дереву. Такая схема выполняет сбор и рассылку по дереву глубины $O(\log P)$, хотя фактическое время зависит от накладных расходов системных семафоров.
 
@@ -593,9 +591,11 @@ if (right < num_threads) sem_post(&b->sem[right]);
 
 ## Экспериментальная база и методика
 
+**Статус результатов.** Графики и значения далее сохранены из предыдущей серии экспериментов, проведённой **до исправления времени измерения и first touch**. Они являются архивными и будут заменены после повторных запусков на одинаковых параметрах.
+
 Измерения выполнены на сетках $512^2$, $1024^2$, $2048^2$, $4096^2$; для коэффициентов раскрутки $q=1,2,4,8$; с пятью профилями компиляции. Параллельные версии измерялись при $P=1,2,4,8,16,18,36$ нитях. Для каждой конфигурации сохранено **пять запусков**.
 
-Для сеток $512^2,1024^2,2048^2,4096^2$ последовательная/Pthreads версии использовали соответственно $N=10000,2000,800,250$ шагов, а OpenMP — $N=20000,4000,1600,500$ шагов. Во всех соответствующих строках `summary.csv` указано $t_1=0.001$.
+В предыдущей серии последовательная/Pthreads версии использовали соответственно $N=10000,2000,800,250$ шагов, а OpenMP — $N=20000,4000,1600,500$ шагов. Во всех соответствующих строках `summary.csv` указано $t_1=0.001$. В новой серии для всех реализаций используются одинаковые $N=10000,2000,800,800$ при размерах $512^2,1024^2,2048^2,4096^2$ соответственно, $t_1=0{,}001$, $a=0{,}1$, $L_x=L_y=1$. Итоговые значения из новой серии ещё не получены.
 
 ## Время одного обновления
 
@@ -605,7 +605,7 @@ if (right < num_threads) sem_post(&b->sem[right]);
 
 ## Производительность MLUPS: контролируемое сравнение
 
-|    Сетка | Sequence, MLUPS | OpenMP (36), MLUPS | Pthreads (36), MLUPS | OpenMP (1), MLUPS | Pthreads (1), MLUPS |
+|    Сетка | Sequence, MLUPS | OpenMP (36), MLUPS | Pthreads (36), MLUPS | Отношение OpenMP/Seq | Отношение Pthreads/Seq |
 | -------: | --------------: | -----------------: | -------------------: | ----------------: | ------------------: |
 |  $512^2$ |          707,25 |            7878,50 |              3055,38 |             11,14 |                4,32 |
 | $1024^2$ |          720,06 |           10473,36 |              4991,57 |             14,55 |                6,93 |
@@ -666,13 +666,234 @@ $$
 
 Режим `-fno-tree-vectorize` нужен как контрольный опыт: если его производительность ниже, это свидетельствует о вкладе векторизации компилятора; если нет, результат необходимо интерпретировать с учётом структуры ядра и ограничений памяти.
 
-# Приложениe
+# Приложение
 
 ## Сборка
 
+### Компиляция исходных файлов
+
+Команды сборки с базовым профилем `-O3`:
+
 ```bash
-g++ -std=c++17 -O3 sequence.cpp -o sequence
+g++ -std=c++17 -O3 sequence.cpp -o heat_original
 g++ -std=c++17 -O3 loop/sequence.loop.cpp -o heat_loop
 g++ -std=c++17 -O3 -fopenmp openmp/openmp.loop.cpp -o heat_omp
-g++ -std=gnu++17 -O3 -pthread pthread/pthread.loop.cpp -o heat_pthread
+g++ -std=c++17 -O3 -pthread pthread/pthread.loop.cpp -o heat_pthread
+```
+
+Для OpenMP нужен флаг `-fopenmp`, для Pthreads — `-pthread`. Это соответствует `scripts/build.sh` с настройками по умолчанию.
+
+### Автоматическая сборка с профилями компилятора
+
+```bash
+bash scripts/build.sh
+OPT_FLAGS="-O2" bash scripts/build.sh
+```
+
+Профили `native`, `unroll` и `novec` используют `ARCH=skylake-avx512` по умолчанию, если архитектура процессора это поддерживает.
+
+## Локальные запуски
+
+### Проверка погрешности
+
+```bash
+bash scripts/build.sh
+bash scripts/run_errors.sh ./heat_loop errors.csv
+```
+
+### Производительность с повторениями
+
+```bash
+PROFILE=O3 REPEATS=5 bash scripts/run_bench.sh bench_O3.csv
+```
+
+Скрипт перебирает те же размеры сеток, числа временных шагов, количество нитей и значения $q=1,2,4,8$ во всех реализациях. Для OpenMP задаётся только `OMP_NUM_THREADS`; дополнительные переменные привязки не установлены.
+
+### Сборка и измерение пяти профилей
+
+```bash
+ARCH=skylake-avx512 REPEATS=5 bash scripts/run_profiles.sh
+```
+
+В локальном режиме каждый профиль записывается в `bench_profiles/O2.csv`, `O3.csv`, `native.csv`, `unroll.csv` и `novec.csv`.
+
+## Запуск на кластере Slurm
+
+Для исключения длительного задания пять повторений распределены между **пятью элементами массива заданий Slurm**. Один элемент запускает все конфигурации для своего профиля **один раз**, а номер повтора берёт из `SLURM_ARRAY_TASK_ID`.
+
+Для профиля `O3`:
+
+```bash
+sbatch --export=ALL,PROFILES=O3 scripts/run_cluster.sbatch
+```
+
+В файле `run_cluster.sbatch` задан параметр `#SBATCH --array=1-5%1`: Slurm ставит в очередь пять заданий и выполняет не более одного задания этого массива одновременно. Для пяти профилей можно направить в очередь пять массивов:
+
+```bash
+for profile in O2 O3 native unroll novec; do
+  sbatch --export=ALL,PROFILES="$profile" scripts/run_cluster.sbatch
+done
+```
+
+Таким образом, для одного профиля требуется пять отдельных заданий, каждое из которых содержит **240 измерений** вместо 1200 в одном задании. Для пяти профилей общее количество измерений остаётся **6000** (25 элементов массива). Ограничение `%1` действует **внутри каждого массива**, а не между отдельными массивами разных профилей.
+
+Каждый элемент собирает программы в индивидуальном временном каталоге, чтобы не перезаписывать исполняемые файлы других заданий. Результаты складываются, например, в `bench_profiles/job_12345/O3_rep1.csv` … `O3_rep5.csv`, где `12345` — номер массива Slurm; журналы сохраняются по шаблону `heatcond-%A_%a.log`.
+
+В задании перед компиляцией загружается предусмотренный примером сервера модуль `gcc/gcc-7.4`; сборка выполняется с `-std=c++17` и необходимыми флагами `-fopenmp` и `-pthread`. Лимит времени одного элемента массива установлен `#SBATCH --time=1:00:00` (1 час). При необходимости лимит можно переопределить при отправке задания, если выбранная очередь допускает большее время.
+
+Для каждого элемента нужен один вычислительный узел с 36 доступными CPU. Разделение уменьшает вероятность превышения лимита времени задания, но при строгом лимите даже 240 конфигураций могут оказаться слишком долгими; в таком случае можно дополнительно разделить исследование по размеру сетки. Параметры очереди и времени запуска уточняются для выбранного кластера.
+
+## Полные тексты скриптов
+
+### `scripts/build.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+cxx="${CXX:-g++}"
+read -r -a flags <<< "${OPT_FLAGS:--O3}"
+"$cxx" -std=c++17 "${flags[@]}" sequence.cpp -o heat_original
+"$cxx" -std=c++17 "${flags[@]}" loop/sequence.loop.cpp -o heat_loop
+"$cxx" -std=c++17 "${flags[@]}" -fopenmp openmp/openmp.loop.cpp -o heat_omp
+"$cxx" -std=c++17 "${flags[@]}" -pthread pthread/pthread.loop.cpp -o heat_pthread
+```
+
+### `scripts/run_errors.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+program="${1:-./heat_loop}"
+output="${2:-errors.csv}"
+echo "nx,ny,steps,t1,a,error_c,error_l2" > "$output"
+
+for config in "101 10" "201 40" "401 160" "801 640"; do
+  read -r nx steps <<< "$config"
+  result=$("$program" --Nx "$nx" --Ny "$nx" --N "$steps" \
+    --t0 0 --t1 0.01 --a 0.1 --Lx 1 --Ly 1 --debug 1)
+  error_c=$(awk '/^C-норма:/ {print $2}' <<< "$result")
+  error_l2=$(awk '/^l2-норма:/ {print $2}' <<< "$result")
+  [[ -n "$error_c" && -n "$error_l2" ]] || { echo "Не удалось извлечь ошибку: $nx" >&2; exit 1; }
+  echo "$nx,$nx,$steps,0.01,0.1,$error_c,$error_l2" >> "$output"
+done
+
+echo "Результаты: $output"
+```
+
+### `scripts/run_bench.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+output="${1:-bench_$(date +%Y%m%d_%H%M%S).csv}"
+repeats="${REPEATS:-5}"
+threads="${THREADS:-1 2 4 8 16 18 36}"
+profile="${PROFILE:-O3}"
+# Номер повтора задаётся Slurm при запуске массива заданий.
+repeat_index="${REPEAT_INDEX:-}"
+echo "profile,method,nx,ny,steps,t1,a,threads,unroll,repeat,time_s,mlups,checksum" > "$output"
+
+for config in ${CONFIGS:-512:10000 1024:2000 2048:800 4096:800}; do
+  read -r nx steps <<< "${config/:/ }"
+  for method in loop openmp pthread; do
+    for p in $threads; do
+      [[ "$method" == "loop" && "$p" != 1 ]] && continue
+      for q in 1 2 4 8; do
+        for ((rep=1; rep<=repeats; ++rep)); do
+          args=(--Nx "$nx" --Ny "$nx" --N "$steps" --t0 0 --t1 0.001 \
+                --a 0.1 --Lx 1 --Ly 1 --loop "$q" --debug 0)
+          case "$method" in
+            loop) result=$(./heat_loop "${args[@]}") ;;
+            openmp) result=$(OMP_NUM_THREADS="$p" ./heat_omp "${args[@]}") ;;
+            pthread) result=$(./heat_pthread --threads "$p" "${args[@]}") ;;
+          esac
+          time_s=$(awk '/^Time:/ {print $2}' <<< "$result")
+          mlups=$(awk '/^MLUPS:/ {print $2}' <<< "$result")
+          checksum=$(awk '/^Checksum:/ {print $2}' <<< "$result")
+          [[ -n "$time_s" && -n "$mlups" && -n "$checksum" ]] || exit 1
+          echo "$profile,$method,$nx,$nx,$steps,0.001,0.1,$p,$q,${repeat_index:-$rep},$time_s,$mlups,$checksum" >> "$output"
+        done
+      done
+    done
+  done
+done
+
+echo "Результаты: $output"
+```
+
+### `scripts/run_profiles.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+dir="${RESULT_DIR:-bench_profiles}"
+arch="${ARCH:-skylake-avx512}"
+mkdir -p "$dir"
+
+for profile in ${PROFILES:-O2 O3 native unroll novec}; do
+  case "$profile" in
+    O2) flags="-O2" ;;
+    O3) flags="-O3" ;;
+    native) flags="-O3 -march=$arch" ;;
+    unroll) flags="-O3 -march=$arch -funroll-loops" ;;
+    novec) flags="-O3 -march=$arch -fno-tree-vectorize" ;;
+    *) echo "Неизвестный профиль: $profile" >&2; exit 1 ;;
+  esac
+
+  echo "Профиль $profile: $flags"
+  OPT_FLAGS="$flags" bash scripts/build.sh
+  PROFILE="$profile" bash scripts/run_bench.sh "$dir/${profile}${REPEAT_INDEX:+_rep${REPEAT_INDEX}}.csv"
+done
+```
+
+### `scripts/run_cluster.sbatch`
+
+```bash
+#!/usr/bin/env bash
+#SBATCH --job-name=heatcond
+#SBATCH --time=1:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=36
+#SBATCH --array=1-5%1
+#SBATCH --output=heatcond-%A_%a.log
+
+set -euo pipefail
+
+# Модуль компилятора согласно конфигурации кластера.
+# В CI без реального Slurm проверяется логика скрипта на системном GCC.
+if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+  module load gcc/gcc-7.4
+fi
+
+project="${SLURM_SUBMIT_DIR:?Нет SLURM_SUBMIT_DIR}"
+repeat="${SLURM_ARRAY_TASK_ID:?Скрипт нужно запускать через sbatch --array=1-5}"
+job_id="${SLURM_ARRAY_JOB_ID:?Нет SLURM_ARRAY_JOB_ID}"
+result_dir="$project/bench_profiles/job_$job_id"
+
+# Каждый элемент массива собирается в собственном временном каталоге:
+# параллельные задания не перезаписывают исполняемые файлы и временные CSV.
+workdir=$(mktemp -d "${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/heatcond_XXXXXX")
+trap 'rm -rf -- "$workdir"' EXIT
+mkdir -p "$workdir"/{loop,openmp,pthread,scripts} "$result_dir"
+cp "$project/sequence.cpp" "$workdir/"
+cp "$project/loop/sequence.loop.cpp" "$workdir/loop/"
+cp "$project/openmp/openmp.loop.cpp" "$workdir/openmp/"
+cp "$project/pthread/pthread.loop.cpp" "$workdir/pthread/"
+cp "$project/scripts/"{build.sh,run_bench.sh,run_profiles.sh} "$workdir/scripts/"
+cd "$workdir"
+
+# Один запуск каждой конфигурации в элементе массива; номер повтора
+# переносится в колонку repeat выходного CSV.
+RESULT_DIR="$result_dir" \
+REPEAT_INDEX="$repeat" \
+REPEATS=1 \
+PROFILES="${PROFILES:-O3}" \
+ARCH="${ARCH:-skylake-avx512}" \
+THREADS="${THREADS:-1 2 4 8 16 18 36}" \
+bash scripts/run_profiles.sh
 ```
