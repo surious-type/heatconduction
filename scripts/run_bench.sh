@@ -18,8 +18,7 @@ for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
                 --a 0.1 --Lx 1 --Ly 1 --loop "$q" --debug 0)
           case "$method" in
             loop) result=$(./heat_loop "${args[@]}") ;;
-            openmp) result=$(OMP_NUM_THREADS="$p" OMP_PLACES=cores \
-              OMP_PROC_BIND=close ./heat_omp "${args[@]}") ;;
+            openmp) result=$(OMP_NUM_THREADS="$p" ./heat_omp "${args[@]}") ;;
             pthread) result=$(./heat_pthread --threads "$p" "${args[@]}") ;;
           esac
           time_s=$(awk '/^Time:/ {print $2}' <<< "$result")
