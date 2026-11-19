@@ -39,12 +39,11 @@ inline void update(const double *U, double *U_next, int i, int j, int Nx,
 }
 
 
-template <int Q>
 inline void update_row(const double *U, double *U_next, int j, int Nx,
-                       double rx, double ry) {
+                       double rx, double ry, int block) {
   int i = 1;
-  for (; i + Q <= Nx - 1; i += Q) {
-    for (int k = 0; k < Q; ++k)
+  for (; i + block <= Nx - 1; i += block) {
+    for (int k = 0; k < block; ++k)
       update(U, U_next, i + k, j, Nx, rx, ry);
   }
   for (; i < Nx - 1; ++i)
@@ -110,12 +109,7 @@ void relax(double *&U, Config &cfg) {
     } else {
 #pragma omp for schedule(static)
       for (int j = 1; j < Ny - 1; ++j) {
-        switch (loop) {
-        case 1: update_row<1>(U, U_next, j, Nx, rx, ry); break;
-        case 2: update_row<2>(U, U_next, j, Nx, rx, ry); break;
-        case 4: update_row<4>(U, U_next, j, Nx, rx, ry); break;
-        case 8: update_row<8>(U, U_next, j, Nx, rx, ry); break;
-        }
+        update_row(U, U_next, j, Nx, rx, ry, loop);
 
         // Граничные условия Неймана для обрабатываемой строки.
         U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
