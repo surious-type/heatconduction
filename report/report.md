@@ -531,7 +531,7 @@ gcc -march=native -Q --help=target | grep march
 Число потоков задаётся средой OpenMP, например:
 
 ```bash
-OMP_NUM_THREADS=8 OMP_PLACES=cores OMP_PROC_BIND=close ./heat_omp --Nx 100 --Ny 50 --N 1000 --a 0.1 --Lx 2 --Ly 1 --loop 4 --debug 0
+OMP_NUM_THREADS=8 ./heat_omp --Nx 100 --Ny 50 --N 1000 --a 0.1 --Lx 2 --Ly 1 --loop 4 --debug 0
 ```
 
 ## Pthreads
