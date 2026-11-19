@@ -37,6 +37,18 @@ inline void update(const double *U, double *U_next, int i, int j, int Nx,
               ry * (U[k - Nx] - 2 * U[k] + U[k + Nx]);
 }
 
+
+inline void update_row(const double *U, double *U_next, int j, int Nx,
+                       double rx, double ry, int block) {
+  int i = 1;
+  for (; i + block <= Nx - 1; i += block) {
+    for (int k = 0; k < block; ++k)
+      update(U, U_next, i + k, j, Nx, rx, ry);
+  }
+  for (; i < Nx - 1; ++i)
+    update(U, U_next, i, j, Nx, rx, ry);
+}
+
 void relax(double *&U, Config &cfg) {
   int loop = cfg.loop;
   double t0 = cfg.t0;
@@ -64,11 +76,10 @@ void relax(double *&U, Config &cfg) {
     }
   }
 
-  for (int n = 0; n < N; n++) {
+  if (!cfg.debug)
+    start = chrono::steady_clock::now();
 
-    if (n == 1 && !cfg.debug) {
-      start = chrono::steady_clock::now();
-    }
+  for (int n = 0; n < N; n++) {
 
     // Внутренние узлы
     if (cfg.debug) {
@@ -84,62 +95,8 @@ void relax(double *&U, Config &cfg) {
         }
       }
     } else {
-      switch (loop) {
-      case 1: {
-        for (int j = 1; j < Ny - 1; j++) {
-          for (int i = 1; i + loop - 1 < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-        }
-        break;
-      }
-      case 2: {
-        for (int j = 1; j < Ny - 1; j++) {
-          int i = 1;
-          for (; i + loop - 1 < Nx - 1; i += 2) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-        }
-        break;
-      }
-      case 4: {
-        for (int j = 1; j < Ny - 1; j++) {
-          int i = 1;
-          for (; i + loop - 1 < Nx - 1; i += 4) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-            update(U, U_next, i + 2, j, Nx, rx, ry);
-            update(U, U_next, i + 3, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-        }
-        break;
-      }
-      case 8: {
-        for (int j = 1; j < Ny - 1; j++) {
-          int i = 1;
-          for (; i + loop - 1 < Nx - 1; i += 8) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-            update(U, U_next, i + 2, j, Nx, rx, ry);
-            update(U, U_next, i + 3, j, Nx, rx, ry);
-            update(U, U_next, i + 4, j, Nx, rx, ry);
-            update(U, U_next, i + 5, j, Nx, rx, ry);
-            update(U, U_next, i + 6, j, Nx, rx, ry);
-            update(U, U_next, i + 7, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-        }
-        break;
-      }
+      for (int j = 1; j < Ny - 1; ++j) {
+        update_row(U, U_next, j, Nx, rx, ry, loop);
       }
     }
 
@@ -158,7 +115,7 @@ void relax(double *&U, Config &cfg) {
 
     double time = std::chrono::duration<double>(end - start).count();
 
-    double updates = double(N - 1) * (Nx - 2) * (Ny - 2);
+    double updates = double(N) * (Nx - 2) * (Ny - 2);
 
     double mlups = updates / (time * 1e6);
 
@@ -211,7 +168,7 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2);
+  error_l2 = sqrt(hx * hy * error_l2);
 
   cout << "C-норма: " << error_inf << endl;
   cout << "l2-норма: " << error_l2 << endl;
@@ -221,10 +178,6 @@ void validate(Config &cfg) {
   if (cfg.N <= 0 || cfg.Nx < 4 || cfg.Ny < 3 || cfg.t1 <= cfg.t0 ||
       cfg.Lx <= 0 || cfg.Ly <= 0 || cfg.a <= 0)
     throw invalid_argument("Некорректные параметры расчета");
-
-  if (!cfg.debug && cfg.N < 2) {
-    throw invalid_argument("Для измерения требуется минимум 2 шага");
-  }
 
   double a = cfg.a;
   double T = cfg.t1 - cfg.t0;

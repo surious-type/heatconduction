@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -75,13 +76,13 @@ void barrier(int thread_num, Data *data, int n) {
     sem_wait(&b->sem[thread_num]);
 
   if (thread_num == 0) {
-    swap(data->U, data->U_next);
-
-    if (!data->cfg->debug) {
-      if (n == 0)
+    if (n == -1) {
+      // Все рабочие нити готовы: начинаем измерение перед первым шагом.
+      if (!data->cfg->debug)
         data->start = chrono::steady_clock::now();
-
-      if (n == data->cfg->N - 1)
+    } else {
+      swap(data->U, data->U_next);
+      if (n == data->cfg->N - 1 && !data->cfg->debug)
         data->end = chrono::steady_clock::now();
     }
   }
@@ -124,6 +125,20 @@ inline void update(const double *U, double *U_next, int i, int j, int Nx,
               ry * (U[k - Nx] - 2 * U[k] + U[k + Nx]);
 }
 
+
+inline void update_row(const double *U, double *U_next, int j, int Nx,
+                       double rx, double ry, int block) {
+  int i = 1;
+  for (; i + block <= Nx - 1; i += block) {
+    for (int k = 0; k < block; ++k)
+      update(U, U_next, i + k, j, Nx, rx, ry);
+  }
+  for (; i < Nx - 1; ++i)
+    update(U, U_next, i, j, Nx, rx, ry);
+}
+
+
+
 void *worker(void *argument) {
   auto *args = (thread_args_t *)argument;
   Data *data = args->data;
@@ -132,7 +147,6 @@ void *worker(void *argument) {
   double t0 = cfg->t0;
   double tau = data->tau;
   int Nx = cfg->Nx;
-  int Ny = cfg->Ny;
   double hx = data->hx;
   double hy = data->hy;
   int loop = cfg->loop;
@@ -143,6 +157,20 @@ void *worker(void *argument) {
   double Ly = cfg->Ly;
   int j_start = args->j_start;
   int j_stop = args->j_stop;
+
+  // First touch: каждая нить инициализирует свои рабочие строки.
+  // Первой и последней нитям также достаются граничные строки.
+  int init_start = j_start - (args->thread_num == 0);
+  int init_stop = j_stop + (args->thread_num == args->num_threads - 1);
+  for (int j = init_start; j < init_stop; ++j) {
+    for (int i = 0; i < Nx; ++i) {
+      const size_t k = size_t(j) * Nx + i;
+      data->U[k] = u_exact(t0, i * hx, j * hy, Lx, Ly);
+      data->U_next[k] = 0.0;
+    }
+  }
+
+  barrier(args->thread_num, data, -1);  // все данные готовы; старт таймера
 
   for (int n = 0; n < N; n++) {
     double *U = data->U;
@@ -165,78 +193,13 @@ void *worker(void *argument) {
             (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
       }
     } else {
-      switch (loop) {
-      case 1: {
-        for (int j = j_start; j < j_stop; j++) {
-          for (int i = 1; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
-      case 2: {
-        for (int j = j_start; j < j_stop; j++) {
-          int i = 1;
-          for (; i + 1 < Nx - 1; i += 2) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
-      case 4: {
-        for (int j = j_start; j < j_stop; j++) {
-          int i = 1;
-          for (; i + 3 < Nx - 1; i += 4) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-            update(U, U_next, i + 2, j, Nx, rx, ry);
-            update(U, U_next, i + 3, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
-      case 8: {
-        for (int j = j_start; j < j_stop; j++) {
-          int i = 1;
-          for (; i + 7 < Nx - 1; i += 8) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-            update(U, U_next, i + 2, j, Nx, rx, ry);
-            update(U, U_next, i + 3, j, Nx, rx, ry);
-            update(U, U_next, i + 4, j, Nx, rx, ry);
-            update(U, U_next, i + 5, j, Nx, rx, ry);
-            update(U, U_next, i + 6, j, Nx, rx, ry);
-            update(U, U_next, i + 7, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
+      for (int j = j_start; j < j_stop; ++j) {
+        update_row(U, U_next, j, Nx, rx, ry, loop);
+
+        // Граничные условия Неймана для обрабатываемой строки.
+        U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
+        U_next[j * Nx + Nx - 1] =
+            (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
       }
     }
     barrier(args->thread_num, data, n);
@@ -244,6 +207,7 @@ void *worker(void *argument) {
 
   return NULL;
 }
+
 
 void relax(double *&U, const Config &cfg) {
   int loop = cfg.loop;
@@ -260,25 +224,16 @@ void relax(double *&U, const Config &cfg) {
   double hy = Ly / (Ny - 1);  // шаг сетки по y;
   double rx = (a * a * tau) / (hx * hx);
   double ry = (a * a * tau) / (hy * hy);
-  double *U_next = new double[Nx * Ny]{};
-
-  // Начальное состояние
-  for (int j = 0; j < Ny; j++) {
-    for (int i = 0; i < Nx; i++) {
-      double x = i * hx;
-      double y = j * hy;
-      U[j * Nx + i] = u_exact(t0, x, y, Lx, Ly);
-    }
-  }
+  double *U_next = new double[size_t(Nx) * Ny];
 
   int num_threads = cfg.threads;
-  pthread_t threads[num_threads];
-  thread_args_t args[num_threads];
+  vector<pthread_t> threads(num_threads);
+  vector<thread_args_t> args(num_threads);
   sem_barrier_t b;
 
   sem_barrier_init(&b, num_threads);
 
-  Data data = {&cfg, U, U_next, hx, hy, tau, rx, ry, &b};
+  Data data = {&cfg, U, U_next, hx, hy, tau, rx, ry, &b, {}, {}};
   for (int i = 0; i < num_threads; i++) {
     args[i].thread_num = i;
     args[i].num_threads = num_threads;
@@ -304,7 +259,7 @@ void relax(double *&U, const Config &cfg) {
   if (!cfg.debug) {
     double time = std::chrono::duration<double>(data.end - data.start).count();
 
-    double updates = double(N - 1) * (Nx - 2) * (Ny - 2);
+    double updates = double(N) * (Nx - 2) * (Ny - 2);
 
     double mlups = updates / (time * 1e6);
 
@@ -358,7 +313,7 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2);
+  error_l2 = sqrt(hx * hy * error_l2);
 
   cout << "C-норма: " << error_inf << endl;
   cout << "l2-норма: " << error_l2 << endl;
@@ -368,10 +323,6 @@ void validate(Config &cfg) {
   if (cfg.N <= 0 || cfg.Nx < 4 || cfg.Ny < 3 || cfg.t1 <= cfg.t0 ||
       cfg.Lx <= 0 || cfg.Ly <= 0 || cfg.a <= 0)
     throw invalid_argument("Некорректные параметры расчета");
-
-  if (!cfg.debug && cfg.N < 2) {
-    throw invalid_argument("Для измерения требуется минимум 2 шага");
-  }
 
   double a = cfg.a;
   double T = cfg.t1 - cfg.t0;
@@ -480,7 +431,7 @@ int main(int argc, char *argv[]) {
   }
 
   size_t size = cfg.Nx * cfg.Ny;
-  double *U = new double[size]{};
+  double *U = new double[size];
 
   relax(U, cfg);
 

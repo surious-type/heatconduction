@@ -54,11 +54,10 @@ void relax(double *&U, Config &cfg) {
     }
   }
 
-  for (int n = 0; n < N; n++) {
+  if (!cfg.debug)
+    start = chrono::steady_clock::now();
 
-    if (n == 1 && !cfg.debug) {
-      start = chrono::steady_clock::now();
-    }
+  for (int n = 0; n < N; n++) {
 
     // Внутренние узлы
     double tn = t0 + n * tau;
@@ -103,7 +102,7 @@ void relax(double *&U, Config &cfg) {
 
     double elapsed = std::chrono::duration<double>(end - start).count();
 
-    double updates = double(N - 1) * (Nx - 2) * (Ny - 2);
+    double updates = double(N) * (Nx - 2) * (Ny - 2);
 
     double mlups = updates / (elapsed * 1e6);
 
@@ -144,7 +143,7 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2);
+  error_l2 = sqrt(hx * hy * error_l2);
 
   cout << "C-норма: " << error_inf << endl;
   cout << "l2-норма: " << error_l2 << endl;
@@ -154,10 +153,6 @@ void validate(Config &cfg) {
   if (cfg.N <= 0 || cfg.Nx < 4 || cfg.Ny < 3 || cfg.t1 <= cfg.t0 ||
       cfg.Lx <= 0 || cfg.Ly <= 0 || cfg.a <= 0)
     throw invalid_argument("Некорректные параметры расчета");
-
-  if (!cfg.debug && cfg.N < 2) {
-    throw invalid_argument("Для измерения требуется минимум 2 шага");
-  }
 
   double a = cfg.a;
   double T = cfg.t1 - cfg.t0;
