@@ -1,0 +1,83 @@
+name: Проверка сборки и корректности
+
+on:
+  push:
+    branches:
+      - feat/first-touch-and-loop-cycles-20261119
+  pull_request:
+
+jobs:
+  compile-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка GCC
+        run: |
+          bash scripts/build.sh
+          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp openmp/openmp.loop.cpp -o /tmp/check_omp
+          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -Werror -pthread pthread/pthread.loop.cpp -o /tmp/check_pthread
+      - name: Проверка всех профилей компиляции
+        shell: bash
+        run: |
+          set -euo pipefail
+          for flags in "-O2" "-O3" "-O3 -march=native" \
+                       "-O3 -march=native -funroll-loops" \
+                       "-O3 -march=native -fno-tree-vectorize"; do
+            OPT_FLAGS="$flags" bash scripts/build.sh
+            ./heat_loop --Nx 16 --Ny 16 --N 10 --t0 0 --t1 0.001 \
+              --a 0.1 --Lx 1 --Ly 1 --loop 4 --debug 0 > /tmp/profile-check.out
+            grep -q '^MLUPS:' /tmp/profile-check.out
+          done
+          bash -n scripts/build.sh scripts/run_bench.sh scripts/run_profiles.sh
+          OPT_FLAGS="-O3" bash scripts/build.sh
+      - name: Сравнение последовательной, OpenMP и Pthreads
+        shell: bash
+        run: |
+          set -euo pipefail
+          for config in "13 11 17" "7 5 12"; do
+            read -r nx ny steps <<< "$config"
+            base=(--Nx "$nx" --Ny "$ny" --N "$steps" --t0 0 --t1 0.001 --a 0.1 --Lx 1 --Ly 1 --debug 1)
+            ./heat_original "${base[@]}" > /tmp/seq.out
+            for q in 1 2 4 8; do
+              ./heat_loop "${base[@]}" --loop "$q" > /tmp/loop.out
+              for p in 1 2 4 8; do
+                OMP_NUM_THREADS="$p" \
+                  timeout 20s ./heat_omp "${base[@]}" --loop "$q" > /tmp/omp.out
+                timeout 20s ./heat_pthread "${base[@]}" --loop "$q" --threads "$p" > /tmp/pthread.out
+                for result in /tmp/loop.out /tmp/omp.out /tmp/pthread.out; do
+                  awk '/^C-норма:/ {c=$2} /^l2-норма:/ {l=$2} END {if (c==""||l=="") exit 2}' "$result"
+                  awk -v ref="$(awk '/^C-норма:/ {print $2}' /tmp/seq.out)" \
+                      -v actual="$(awk '/^C-норма:/ {print $2}' "$result")" \
+                      'BEGIN {d=ref-actual; if (d<0) d=-d; if (d>1e-7) exit 3}'
+                  awk -v ref="$(awk '/^l2-норма:/ {print $2}' /tmp/seq.out)" \
+                      -v actual="$(awk '/^l2-норма:/ {print $2}' "$result")" \
+                      'BEGIN {d=ref-actual; if (d<0) d=-d; if (d>1e-7) exit 4}'
+                done
+              done
+            done
+          done
+      - name: Проверка режима производительности
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--Nx 41 --Ny 37 --N 40 --t0 0 --t1 0.001 --a 0.1 --Lx 1 --Ly 1 --debug 0)
+          for q in 1 2 4 8; do
+            timeout 20s ./heat_loop "${args[@]}" --loop "$q" > /tmp/loop.out
+            baseline=$(awk '/^Checksum:/ {print $2}' /tmp/loop.out)
+            for p in 1 2 4; do
+              OMP_NUM_THREADS="$p" \
+                timeout 20s ./heat_omp "${args[@]}" --loop "$q" > /tmp/omp.out
+              timeout 20s ./heat_pthread "${args[@]}" --loop "$q" --threads "$p" > /tmp/pthread.out
+              for result in /tmp/loop.out /tmp/omp.out /tmp/pthread.out; do
+                awk -v baseline="$baseline" '
+                  /^Time:/ {t=$2}
+                  /^MLUPS:/ {m=$2}
+                  /^Checksum:/ {c=$2}
+                  END {if (t<=0 || m<=0 || c=="") exit 2; d=c-baseline; if(d<0)d=-d; if(d>1e-5)exit 3}' "$result"
+              done
+            done
+          done
+      - name: Проверка скрипта ошибки
+        run: |
+          bash scripts/run_errors.sh ./heat_loop /tmp/errors.csv
+          test "$(wc -l < /tmp/errors.csv)" -eq 5

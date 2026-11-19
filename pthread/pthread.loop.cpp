@@ -6,10 +6,8 @@
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
-#ifdef __linux__
-#include <sched.h>
-#endif
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -51,8 +49,6 @@ typedef struct {
   int num_threads;
   int j_start;
   int j_stop;
-  int init_j_start;
-  int init_j_stop;
   sem_barrier_t *sem_barrier;
   Data *data;
 } thread_args_t;
@@ -130,12 +126,11 @@ inline void update(const double *U, double *U_next, int i, int j, int Nx,
 }
 
 
-template <int Q>
 inline void update_row(const double *U, double *U_next, int j, int Nx,
-                       double rx, double ry) {
+                       double rx, double ry, int block) {
   int i = 1;
-  for (; i + Q <= Nx - 1; i += Q) {
-    for (int k = 0; k < Q; ++k)
+  for (; i + block <= Nx - 1; i += block) {
+    for (int k = 0; k < block; ++k)
       update(U, U_next, i + k, j, Nx, rx, ry);
   }
   for (; i < Nx - 1; ++i)
@@ -143,33 +138,6 @@ inline void update_row(const double *U, double *U_next, int j, int Nx,
 }
 
 
-#ifdef __linux__
-void bind_worker_to_cpu(int thread_num) {
-  // Учитываем ограничения cpuset, установленные системой очередей кластера.
-  cpu_set_t allowed;
-  CPU_ZERO(&allowed);
-  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0)
-    return;
-
-  const int available = CPU_COUNT(&allowed);
-  if (available <= 0)
-    return;
-  int index = thread_num % available;
-  for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
-    if (CPU_ISSET(cpu, &allowed) && index-- == 0) {
-      cpu_set_t target;
-      CPU_ZERO(&target);
-      CPU_SET(cpu, &target);
-      const int status =
-          pthread_setaffinity_np(pthread_self(), sizeof(target), &target);
-      if (status != 0)
-        fprintf(stderr, "Предупреждение: не удалось закрепить нить %d за CPU %d (код %d)\n",
-                thread_num, cpu, status);
-      return;
-    }
-  }
-}
-#endif
 
 void *worker(void *argument) {
   auto *args = (thread_args_t *)argument;
@@ -179,7 +147,6 @@ void *worker(void *argument) {
   double t0 = cfg->t0;
   double tau = data->tau;
   int Nx = cfg->Nx;
-  int Ny = cfg->Ny;
   double hx = data->hx;
   double hy = data->hy;
   int loop = cfg->loop;
@@ -191,12 +158,11 @@ void *worker(void *argument) {
   int j_start = args->j_start;
   int j_stop = args->j_stop;
 
-#ifdef __linux__
-  bind_worker_to_cpu(args->thread_num);
-#endif
-
-  // First touch: инициализация всех строк, включая граничные, рабочими нитями.
-  for (int j = args->init_j_start; j < args->init_j_stop; ++j) {
+  // First touch: каждая нить инициализирует свои рабочие строки.
+  // Первой и последней нитям также достаются граничные строки.
+  int init_start = j_start - (args->thread_num == 0);
+  int init_stop = j_stop + (args->thread_num == args->num_threads - 1);
+  for (int j = init_start; j < init_stop; ++j) {
     for (int i = 0; i < Nx; ++i) {
       const size_t k = size_t(j) * Nx + i;
       data->U[k] = u_exact(t0, i * hx, j * hy, Lx, Ly);
@@ -228,12 +194,7 @@ void *worker(void *argument) {
       }
     } else {
       for (int j = j_start; j < j_stop; ++j) {
-        switch (loop) {
-        case 1: update_row<1>(U, U_next, j, Nx, rx, ry); break;
-        case 2: update_row<2>(U, U_next, j, Nx, rx, ry); break;
-        case 4: update_row<4>(U, U_next, j, Nx, rx, ry); break;
-        case 8: update_row<8>(U, U_next, j, Nx, rx, ry); break;
-        }
+        update_row(U, U_next, j, Nx, rx, ry, loop);
 
         // Граничные условия Неймана для обрабатываемой строки.
         U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
@@ -266,21 +227,19 @@ void relax(double *&U, const Config &cfg) {
   double *U_next = new double[size_t(Nx) * Ny];
 
   int num_threads = cfg.threads;
-  pthread_t threads[num_threads];
-  thread_args_t args[num_threads];
+  vector<pthread_t> threads(num_threads);
+  vector<thread_args_t> args(num_threads);
   sem_barrier_t b;
 
   sem_barrier_init(&b, num_threads);
 
-  Data data = {&cfg, U, U_next, hx, hy, tau, rx, ry, &b};
+  Data data = {&cfg, U, U_next, hx, hy, tau, rx, ry, &b, {}, {}};
   for (int i = 0; i < num_threads; i++) {
     args[i].thread_num = i;
     args[i].num_threads = num_threads;
     args[i].sem_barrier = &b;
     args[i].j_start = 1 + (Ny - 2) * i / num_threads;
     args[i].j_stop = 1 + (Ny - 2) * (i + 1) / num_threads;
-    args[i].init_j_start = Ny * i / num_threads;
-    args[i].init_j_stop = Ny * (i + 1) / num_threads;
     args[i].data = &data;
 
     int status = pthread_create(&threads[i], NULL, worker, &args[i]);
@@ -354,10 +313,10 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2 / (double(Nx) * Ny));
+  error_l2 = sqrt(hx * hy * error_l2);
 
   cout << "C-норма: " << error_inf << endl;
-  cout << "RMSE: " << error_l2 << endl;
+  cout << "l2-норма: " << error_l2 << endl;
 }
 
 void validate(Config &cfg) {
