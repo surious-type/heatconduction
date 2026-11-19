@@ -64,11 +64,10 @@ void relax(double *&U, Config &cfg) {
     }
   }
 
-  for (int n = 0; n < N; n++) {
+  if (!cfg.debug)
+    start = chrono::steady_clock::now();
 
-    if (n == 1 && !cfg.debug) {
-      start = chrono::steady_clock::now();
-    }
+  for (int n = 0; n < N; n++) {
 
     // Внутренние узлы
     if (cfg.debug) {
@@ -158,7 +157,7 @@ void relax(double *&U, Config &cfg) {
 
     double time = std::chrono::duration<double>(end - start).count();
 
-    double updates = double(N - 1) * (Nx - 2) * (Ny - 2);
+    double updates = double(N) * (Nx - 2) * (Ny - 2);
 
     double mlups = updates / (time * 1e6);
 
@@ -211,10 +210,10 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2);
+  error_l2 = sqrt(error_l2 / (double(Nx) * Ny));
 
   cout << "C-норма: " << error_inf << endl;
-  cout << "l2-норма: " << error_l2 << endl;
+  cout << "RMSE: " << error_l2 << endl;
 }
 
 void validate(Config &cfg) {
