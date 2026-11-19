@@ -9,54 +9,40 @@
 
 set -euo pipefail
 
-# На кластере используется модуль OpenMPI, указанный в настройках сервера.
-# OpenMPI здесь требуется для подготовки окружения, сама программа MPI не использует.
-# Вне Slurm (например, при тестировании CI) используется системный компилятор.
-if [[ -n "${SLURM_JOB_ID:-}" ]]; then
-  if ! type module >/dev/null 2>&1; then
-    echo "Ошибка: команда module не настроена на вычислительном узле." >&2
-    exit 1
-  fi
-  if ! module load openmpi4/openmpi4; then
-    echo "Ошибка: не удалось загрузить модуль openmpi4/openmpi4." >&2
-    echo "Проверьте modulecmd и инициализацию системы modules на вычислительном узле." >&2
-    exit 1
-  fi
-fi
-
-cxx="${CXX:-g++}"
-if ! command -v "$cxx" >/dev/null 2>&1; then
-  echo "Ошибка: компилятор $cxx не найден в PATH после загрузки модуля." >&2
-  echo "PATH=$PATH" >&2
-  echo "Проверьте доступный компилятор: command -v g++; command -v mpicxx" >&2
-  exit 1
-fi
-echo "Компилятор: $(command -v "$cxx")"
-"$cxx" --version | head -n 1
-
+# На вычислительных узлах только запуск: GCC и modulecmd не требуются.
 project="${SLURM_SUBMIT_DIR:?Нет SLURM_SUBMIT_DIR}"
-repeat="${SLURM_ARRAY_TASK_ID:?Скрипт нужно запускать через sbatch --array=1-5}"
+repeat="${SLURM_ARRAY_TASK_ID:?Нет SLURM_ARRAY_TASK_ID}"
 job_id="${SLURM_ARRAY_JOB_ID:?Нет SLURM_ARRAY_JOB_ID}"
-result_dir="$project/bench_profiles/job_$job_id"
+profile="${PROFILES:-O3}"
 
-# Каждый элемент массива собирается в собственном временном каталоге:
-# параллельные задания не перезаписывают исполняемые файлы и временные CSV.
+case "$profile" in
+  O2|O3|native|unroll|novec) ;;
+  *) echo "Нужно выбрать один профиль: O2, O3, native, unroll или novec" >&2; exit 1 ;;
+esac
+
+build_dir="$project/${BUILD_DIR:-build_profiles}/$profile"
+for exe in heat_loop heat_omp heat_pthread; do
+  if [[ ! -x "$build_dir/$exe" ]]; then
+    echo "Нет готовой программы: $build_dir/$exe" >&2
+    echo "Сначала выполните PROFILES=$profile bash scripts/prepare_binaries.sh на узле входа." >&2
+    exit 1
+  fi
+done
+
+result_dir="$project/bench_profiles/job_$job_id"
+mkdir -p "$result_dir"
+
+# Каждый элемент массива получает собственный каталог, но не компилирует код.
 workdir=$(mktemp -d "${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/heatcond_XXXXXX")
 trap 'rm -rf -- "$workdir"' EXIT
-mkdir -p "$workdir"/{loop,openmp,pthread,scripts} "$result_dir"
-cp "$project/sequence.cpp" "$workdir/"
-cp "$project/loop/sequence.loop.cpp" "$workdir/loop/"
-cp "$project/openmp/openmp.loop.cpp" "$workdir/openmp/"
-cp "$project/pthread/pthread.loop.cpp" "$workdir/pthread/"
-cp "$project/scripts/"{build.sh,run_bench.sh,run_profiles.sh} "$workdir/scripts/"
+cp "$build_dir"/{heat_loop,heat_omp,heat_pthread} "$workdir/"
+cp "$project/scripts/run_bench.sh" "$workdir/"
 cd "$workdir"
 
-# Один запуск каждой конфигурации в элементе массива; номер повтора
-# переносится в колонку repeat выходного CSV.
-RESULT_DIR="$result_dir" \
-REPEAT_INDEX="$repeat" \
-REPEATS=1 \
-PROFILES="${PROFILES:-O3}" \
-ARCH="${ARCH:-skylake-avx512}" \
+echo "Профиль: $profile; повторение: $repeat"
+echo "Запуск предварительно собранных программ из $build_dir"
+
+# Номер Slurm-элемента становится номером повторения в CSV.
+PROFILE="$profile" REPEAT_INDEX="$repeat" REPEATS=1 \
 THREADS="${THREADS:-1 2 4 8 16 18 36}" \
-bash scripts/run_profiles.sh
+bash ./run_bench.sh "$result_dir/${profile}_rep${repeat}.csv"
