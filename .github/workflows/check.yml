@@ -36,6 +36,9 @@ jobs:
           set -euo pipefail
           bash -n scripts/run_cluster.sbatch scripts/run_profiles.sh scripts/run_bench.sh scripts/prepare_binaries.sh
           PROFILES=O3 bash scripts/prepare_binaries.sh
+          test -s build_profiles/O3/lib/libstdc++.so.6
+          test -s build_profiles/O3/lib/libgcc_s.so.1
+          test -s build_profiles/O3/lib/libgomp.so.1
           for i in 1 2; do
             CXX=/bin/false SLURM_SUBMIT_DIR="$PWD" SLURM_ARRAY_JOB_ID=900001 \
               SLURM_ARRAY_TASK_ID="$i" CONFIGS="16:10" THREADS="1 2" \
