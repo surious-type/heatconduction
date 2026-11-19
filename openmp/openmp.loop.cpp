@@ -38,6 +38,18 @@ inline void update(const double *U, double *U_next, int i, int j, int Nx,
               ry * (U[k - Nx] - 2 * U[k] + U[k + Nx]);
 }
 
+
+inline void update_row(const double *U, double *U_next, int j, int Nx,
+                       double rx, double ry, int block) {
+  int i = 1;
+  for (; i + block <= Nx - 1; i += block) {
+    for (int k = 0; k < block; ++k)
+      update(U, U_next, i + k, j, Nx, rx, ry);
+  }
+  for (; i < Nx - 1; ++i)
+    update(U, U_next, i, j, Nx, rx, ry);
+}
+
 void relax(double *&U, Config &cfg) {
   int loop = cfg.loop;
   double t0 = cfg.t0;
@@ -53,20 +65,22 @@ void relax(double *&U, Config &cfg) {
   double hy = Ly / (Ny - 1);  // шаг сетки по y;
   double rx = (a * a * tau) / (hx * hx);
   double ry = (a * a * tau) / (hy * hy);
-  double *U_next = new double[Nx * Ny]{};
+  double *U_next = new double[size_t(Nx) * Ny];
   double start, end;
-
-  // Начальное состояние
-  for (int j = 0; j < Ny; j++) {
-    for (int i = 0; i < Nx; i++) {
-      double x = i * hx;
-      double y = j * hy;
-      U[j * Nx + i] = u_exact(t0, x, y, Lx, Ly);
-    }
-  }
 
 #pragma omp parallel
   {
+    // First touch: каждая нить физически инициализирует свои строки
+    // обоих массивов до начала расчёта.
+#pragma omp for schedule(static)
+    for (int j = 0; j < Ny; ++j) {
+      for (int i = 0; i < Nx; ++i) {
+        const size_t k = size_t(j) * Nx + i;
+        U[k] = u_exact(t0, i * hx, j * hy, Lx, Ly);
+        U_next[k] = 0.0;
+      }
+    }
+
 #pragma omp single
     {
       if (!cfg.debug)
@@ -93,82 +107,14 @@ void relax(double *&U, Config &cfg) {
             (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
       }
     } else {
-      switch (loop) {
-      case 1: {
 #pragma omp for schedule(static)
-        for (int j = 1; j < Ny - 1; j++) {
-          for (int i = 1; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
-      case 2: {
-#pragma omp for schedule(static)
-        for (int j = 1; j < Ny - 1; j++) {
-          int i = 1;
-          for (; i + 1 < Nx - 1; i += 2) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
-      case 4: {
-#pragma omp for schedule(static)
-        for (int j = 1; j < Ny - 1; j++) {
-          int i = 1;
-          for (; i + 3 < Nx - 1; i += 4) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-            update(U, U_next, i + 2, j, Nx, rx, ry);
-            update(U, U_next, i + 3, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
-      case 8: {
-#pragma omp for schedule(static)
-        for (int j = 1; j < Ny - 1; j++) {
-          int i = 1;
-          for (; i + 7 < Nx - 1; i += 8) {
-            update(U, U_next, i, j, Nx, rx, ry);
-            update(U, U_next, i + 1, j, Nx, rx, ry);
-            update(U, U_next, i + 2, j, Nx, rx, ry);
-            update(U, U_next, i + 3, j, Nx, rx, ry);
-            update(U, U_next, i + 4, j, Nx, rx, ry);
-            update(U, U_next, i + 5, j, Nx, rx, ry);
-            update(U, U_next, i + 6, j, Nx, rx, ry);
-            update(U, U_next, i + 7, j, Nx, rx, ry);
-          }
-          for (; i < Nx - 1; i++) {
-            update(U, U_next, i, j, Nx, rx, ry);
-          }
-          // Граничные условия Неймана - второго рода
-          U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
-          U_next[j * Nx + Nx - 1] =
-              (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
-        }
-        break;
-      }
+      for (int j = 1; j < Ny - 1; ++j) {
+        update_row(U, U_next, j, Nx, rx, ry, loop);
+
+        // Граничные условия Неймана для обрабатываемой строки.
+        U_next[j * Nx] = (4 * U_next[j * Nx + 1] - U_next[j * Nx + 2]) / 3;
+        U_next[j * Nx + Nx - 1] =
+            (4 * U_next[j * Nx + (Nx - 2)] - U_next[j * Nx + (Nx - 3)]) / 3;
       }
     }
 
@@ -350,7 +296,7 @@ int main(int argc, char *argv[]) {
   validate(cfg);
 
   size_t size = cfg.Nx * cfg.Ny;
-  double *U = new double[size]{};
+  double *U = new double[size];
 
   relax(U, cfg);
 
