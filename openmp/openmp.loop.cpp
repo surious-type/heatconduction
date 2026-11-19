@@ -66,20 +66,22 @@ void relax(double *&U, Config &cfg) {
   double hy = Ly / (Ny - 1);  // шаг сетки по y;
   double rx = (a * a * tau) / (hx * hx);
   double ry = (a * a * tau) / (hy * hy);
-  double *U_next = new double[Nx * Ny]{};
+  double *U_next = new double[size_t(Nx) * Ny];
   double start, end;
-
-  // Начальное состояние
-  for (int j = 0; j < Ny; j++) {
-    for (int i = 0; i < Nx; i++) {
-      double x = i * hx;
-      double y = j * hy;
-      U[j * Nx + i] = u_exact(t0, x, y, Lx, Ly);
-    }
-  }
 
 #pragma omp parallel
   {
+    // First touch: каждая нить физически инициализирует свои строки
+    // обоих массивов до начала расчёта.
+#pragma omp for schedule(static)
+    for (int j = 0; j < Ny; ++j) {
+      for (int i = 0; i < Nx; ++i) {
+        const size_t k = size_t(j) * Nx + i;
+        U[k] = u_exact(t0, i * hx, j * hy, Lx, Ly);
+        U_next[k] = 0.0;
+      }
+    }
+
 #pragma omp single
     {
       if (!cfg.debug)
@@ -300,7 +302,7 @@ int main(int argc, char *argv[]) {
   validate(cfg);
 
   size_t size = cfg.Nx * cfg.Ny;
-  double *U = new double[size]{};
+  double *U = new double[size];
 
   relax(U, cfg);
 
