@@ -280,7 +280,7 @@ e_{i,j}=U^N_{i,j}-u_{\mathrm{ex}}(t_1,x_i,y_j).
 \tag{17}
 $$
 
-Программа выводит максимальную абсолютную ошибку (C-норму) и сеточную аппроксимацию интегральной $L_2$-нормы:
+Программа выводит две нормы:
 
 $$
 \|e\|_C=\max_{i,j}|e_{i,j}|,
@@ -452,8 +452,6 @@ $$
 ## Исходный цикл и локальность памяти
 
 Основная вычислительная работа состоит в применении пятиточечного шаблона ко всем внутренним узлам на каждом временном слое. Выбранный порядок `j` — внешний, `i` — внутренний обеспечивает последовательный доступ к памяти в направлении $x$.
-
-В режиме измерений эта версия не вызывает тригонометрические функции при обновлении внутренних узлов; это важно при сравнении с начальной `sequence.cpp`.
 
 ## Группировка итераций внутреннего цикла
 
@@ -672,40 +670,103 @@ $$
 
 ## Сборка
 
+### Компиляция исходных файлов
+
+Команды сборки с базовым профилем `-O3`:
+
 ```bash
-bash scripts/build.sh
+g++ -std=c++17 -O3 sequence.cpp -o heat_original
+g++ -std=c++17 -O3 loop/sequence.loop.cpp -o heat_loop
+g++ -std=c++17 -O3 -fopenmp openmp/openmp.loop.cpp -o heat_omp
+g++ -std=c++17 -O3 -pthread pthread/pthread.loop.cpp -o heat_pthread
 ```
 
+Для OpenMP нужен флаг `-fopenmp`, для Pthreads — `-pthread`. Все четыре команды соответствуют `scripts/build.sh` при настройке по умолчанию.
 
-## Скрипты запуска
+### Автоматическая сборка и профили компилятора
 
-Для получения локальной таблицы ошибок используется `scripts/run_errors.sh`. Для производительности применяется `scripts/run_bench.sh`: одинаковые размеры сеток и временные шаги для последовательной, OpenMP и Pthreads версий, значения $q=1,2,4,8$, число нитей и пять повторений. Каждый CSV содержит профиль компиляции.
+```bash
+bash scripts/build.sh
+OPT_FLAGS="-O2" bash scripts/build.sh
+```
 
-Скрипт `scripts/run_profiles.sh` автоматически пересобирает программу с пятью профилями оптимизации, приведёнными в разделе «Влияние оптимизаций компилятора», затем сохраняет результаты в файлы `bench_profiles/O2.csv`, `bench_profiles/O3.csv`, `bench_profiles/native.csv`, `bench_profiles/unroll.csv`, `bench_profiles/novec.csv`. Для сравнения на том же оборудовании используется `ARCH=skylake-avx512`; на другой архитектуре необходимо явно указать целевую архитектуру и не смешивать полученные данные.
+Скрипт `run_profiles.sh` пересобирает программы для пяти профилей `O2`, `O3`, `native`, `unroll`, `novec`. Профили `native`, `unroll` и `novec` используют `ARCH=skylake-avx512` по умолчанию; архитектура должна соответствовать процессору кластера.
 
-### Сборка и проверка ошибки
+## Локальные запуски
+
+### Проверка погрешности
 
 ```bash
 bash scripts/build.sh
 bash scripts/run_errors.sh ./heat_loop errors.csv
 ```
 
-### Измерение производительности (один профиль)
+### Измерение производительности
 
 ```bash
-OPT_FLAGS="-O3" bash scripts/build.sh
-PROFILE="O3" REPEATS=5 bash scripts/run_bench.sh bench_O3.csv
+PROFILE=O3 REPEATS=5 bash scripts/run_bench.sh bench_O3.csv
 ```
 
-### Измерения для пяти профилей
+Используются одинаковые размеры сеток и числа шагов для последовательной, OpenMP и Pthreads реализаций. Число нитей задаётся параметром `OMP_NUM_THREADS` для OpenMP и `--threads` для Pthreads; дополнительные настройки размещения OpenMP не задаются. Скрипт сохраняет профиль компиляции в CSV.
+
+### Измерение пяти профилей
 
 ```bash
 ARCH=skylake-avx512 REPEATS=5 bash scripts/run_profiles.sh
 ```
 
-Для одного профиля можно задать `PROFILES="O2"`. Всего при пяти повторениях выполняется 1200 запусков на профиль, поэтому на кластере можно выделить отдельное Slurm-задание каждому профилю.
+Каждый профиль записывается в собственный CSV в каталоге `bench_profiles/`. При пяти повторениях и стандартном наборе параметров получается 1200 запусков на профиль.
 
-Полный текст скрипта повторных измерений (`scripts/run_bench.sh`):
+## Запуск на кластере Slurm
+
+Для одного профиля можно отправить скрипт `scripts/run_cluster.sbatch` на вычислительный узел:
+
+```bash
+sbatch --export=ALL,PROFILES=O3 scripts/run_cluster.sbatch
+```
+
+Для остальных профилей значение `PROFILES` меняется на `O2`, `native`, `unroll` или `novec`. Скрипт запрашивает 36 CPU на одном узле; настройки очереди (partition, ограничения времени) при необходимости задаются параметрами `sbatch` согласно правилам конкретного кластера. Запускать вычисления непосредственно на login-узле не следует. Для сопоставимости предпочтительны вычислительные узлы одинаковой архитектуры.
+
+## Полные тексты скриптов
+
+### `scripts/build.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+cxx="${CXX:-g++}"
+read -r -a flags <<< "${OPT_FLAGS:--O3}"
+"$cxx" -std=c++17 "${flags[@]}" sequence.cpp -o heat_original
+"$cxx" -std=c++17 "${flags[@]}" loop/sequence.loop.cpp -o heat_loop
+"$cxx" -std=c++17 "${flags[@]}" -fopenmp openmp/openmp.loop.cpp -o heat_omp
+"$cxx" -std=c++17 "${flags[@]}" -pthread pthread/pthread.loop.cpp -o heat_pthread
+```
+
+### `scripts/run_errors.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+program="${1:-./heat_loop}"
+output="${2:-errors.csv}"
+echo "nx,ny,steps,t1,a,error_c,error_l2" > "$output"
+
+for config in "101 10" "201 40" "401 160" "801 640"; do
+  read -r nx steps <<< "$config"
+  result=$("$program" --Nx "$nx" --Ny "$nx" --N "$steps" \
+    --t0 0 --t1 0.01 --a 0.1 --Lx 1 --Ly 1 --debug 1)
+  error_c=$(awk '/^C-норма:/ {print $2}' <<< "$result")
+  error_l2=$(awk '/^l2-норма:/ {print $2}' <<< "$result")
+  [[ -n "$error_c" && -n "$error_l2" ]] || { echo "Не удалось извлечь ошибку: $nx" >&2; exit 1; }
+  echo "$nx,$nx,$steps,0.01,0.1,$error_c,$error_l2" >> "$output"
+done
+
+echo "Результаты: $output"
+```
+
+### `scripts/run_bench.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -728,8 +789,7 @@ for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
                 --a 0.1 --Lx 1 --Ly 1 --loop "$q" --debug 0)
           case "$method" in
             loop) result=$(./heat_loop "${args[@]}") ;;
-            openmp) result=$(OMP_NUM_THREADS="$p" OMP_PLACES=cores \
-              OMP_PROC_BIND=close ./heat_omp "${args[@]}") ;;
+            openmp) result=$(OMP_NUM_THREADS="$p" ./heat_omp "${args[@]}") ;;
             pthread) result=$(./heat_pthread --threads "$p" "${args[@]}") ;;
           esac
           time_s=$(awk '/^Time:/ {print $2}' <<< "$result")
@@ -746,7 +806,7 @@ done
 echo "Результаты: $output"
 ```
 
-Скрипт перебора профилей (`scripts/run_profiles.sh`):
+### `scripts/run_profiles.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -772,4 +832,23 @@ for profile in ${PROFILES:-O2 O3 native unroll novec}; do
 done
 ```
 
-Оба скрипта нужно запускать на вычислительном узле через систему очередей.
+### `scripts/run_cluster.sbatch`
+
+```bash
+#!/usr/bin/env bash
+#SBATCH --job-name=heatcond
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=36
+#SBATCH --output=heatcond-%j.log
+
+set -euo pipefail
+cd "${SLURM_SUBMIT_DIR:-.}"
+
+# Один профиль на задание: PROFILES=O2/O3/native/unroll/novec.
+PROFILES="${PROFILES:-O3}" \
+ARCH="${ARCH:-skylake-avx512}" \
+REPEATS="${REPEATS:-5}" \
+THREADS="${THREADS:-1 2 4 8 16 18 36}" \
+bash scripts/run_profiles.sh
+```
