@@ -34,11 +34,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n scripts/run_cluster.sbatch scripts/run_profiles.sh scripts/run_bench.sh
+          bash -n scripts/run_cluster.sbatch scripts/run_profiles.sh scripts/run_bench.sh scripts/prepare_binaries.sh
+          PROFILES=O3 bash scripts/prepare_binaries.sh
           for i in 1 2; do
-            SLURM_SUBMIT_DIR="$PWD" SLURM_ARRAY_JOB_ID=900001 \
+            CXX=/bin/false SLURM_SUBMIT_DIR="$PWD" SLURM_ARRAY_JOB_ID=900001 \
               SLURM_ARRAY_TASK_ID="$i" CONFIGS="16:10" THREADS="1 2" \
-              PROFILES=O3 ARCH=native bash scripts/run_cluster.sbatch
+              PROFILES=O3 bash scripts/run_cluster.sbatch
             file="bench_profiles/job_900001/O3_rep${i}.csv"
             test -f "$file"
             test "$(wc -l < "$file")" -eq 21
