@@ -41,7 +41,7 @@ jobs:
             for q in 1 2 4 8; do
               ./heat_loop "${base[@]}" --loop "$q" > /tmp/loop.out
               for p in 1 2 4 8; do
-                OMP_NUM_THREADS="$p" OMP_PLACES=cores OMP_PROC_BIND=close \
+                OMP_NUM_THREADS="$p" \
                   timeout 20s ./heat_omp "${base[@]}" --loop "$q" > /tmp/omp.out
                 timeout 20s ./heat_pthread "${base[@]}" --loop "$q" --threads "$p" > /tmp/pthread.out
                 for result in /tmp/loop.out /tmp/omp.out /tmp/pthread.out; do
@@ -65,7 +65,7 @@ jobs:
             timeout 20s ./heat_loop "${args[@]}" --loop "$q" > /tmp/loop.out
             baseline=$(awk '/^Checksum:/ {print $2}' /tmp/loop.out)
             for p in 1 2 4; do
-              OMP_NUM_THREADS="$p" OMP_PLACES=cores OMP_PROC_BIND=close \
+              OMP_NUM_THREADS="$p" \
                 timeout 20s ./heat_omp "${args[@]}" --loop "$q" > /tmp/omp.out
               timeout 20s ./heat_pthread "${args[@]}" --loop "$q" --threads "$p" > /tmp/pthread.out
               for result in /tmp/loop.out /tmp/omp.out /tmp/pthread.out; do
