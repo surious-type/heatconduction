@@ -66,7 +66,13 @@ void relax(double *&U, Config &cfg) {
   }
 
 #pragma omp parallel
-  for (int n = 0; n < N; n++) {
+  {
+#pragma omp single
+    {
+      if (!cfg.debug)
+        start = omp_get_wtime();
+    }
+    for (int n = 0; n < N; n++) {
 
     // Внутренние узлы
     if (cfg.debug) {
@@ -167,26 +173,18 @@ void relax(double *&U, Config &cfg) {
     }
 
 #pragma omp single
-    {
-      swap(U, U_next);
-    }
-
-    if (n == 0 && !cfg.debug) {
-#pragma omp barrier
-
-#pragma omp single
       {
-        start = omp_get_wtime();
+        swap(U, U_next);
+        if (n == N - 1 && !cfg.debug)
+          end = omp_get_wtime();
       }
     }
   }
 
   if (!cfg.debug) {
-    end = omp_get_wtime();
+    double time = end - start;
 
-    double time = std::chrono::duration<double>(end - start).count();
-
-    double updates = double(N - 1) * (Nx - 2) * (Ny - 2);
+    double updates = double(N) * (Nx - 2) * (Ny - 2);
 
     double mlups = updates / (time * 1e6);
 
@@ -239,10 +237,10 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2);
+  error_l2 = sqrt(error_l2 / (double(Nx) * Ny));
 
   cout << "C-норма: " << error_inf << endl;
-  cout << "l2-норма: " << error_l2 << endl;
+  cout << "RMSE: " << error_l2 << endl;
 }
 
 void validate(Config &cfg) {
