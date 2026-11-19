@@ -5,10 +5,12 @@ output="${1:-bench_$(date +%Y%m%d_%H%M%S).csv}"
 repeats="${REPEATS:-5}"
 threads="${THREADS:-1 2 4 8 16 18 36}"
 profile="${PROFILE:-O3}"
+# Номер повтора задаётся Slurm при запуске массива заданий.
+repeat_index="${REPEAT_INDEX:-}"
 echo "profile,method,nx,ny,steps,t1,a,threads,unroll,repeat,time_s,mlups,checksum" > "$output"
 
-for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
-  read -r nx steps <<< "$config"
+for config in ${CONFIGS:-512:10000 1024:2000 2048:800 4096:800}; do
+  read -r nx steps <<< "${config/:/ }"
   for method in loop openmp pthread; do
     for p in $threads; do
       [[ "$method" == "loop" && "$p" != 1 ]] && continue
@@ -25,7 +27,7 @@ for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
           mlups=$(awk '/^MLUPS:/ {print $2}' <<< "$result")
           checksum=$(awk '/^Checksum:/ {print $2}' <<< "$result")
           [[ -n "$time_s" && -n "$mlups" && -n "$checksum" ]] || exit 1
-          echo "$profile,$method,$nx,$nx,$steps,0.001,0.1,$p,$q,$rep,$time_s,$mlups,$checksum" >> "$output"
+          echo "$profile,$method,$nx,$nx,$steps,0.001,0.1,$p,$q,${repeat_index:-$rep},$time_s,$mlups,$checksum" >> "$output"
         done
       done
     done
