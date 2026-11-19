@@ -681,16 +681,16 @@ g++ -std=c++17 -O3 -fopenmp openmp/openmp.loop.cpp -o heat_omp
 g++ -std=c++17 -O3 -pthread pthread/pthread.loop.cpp -o heat_pthread
 ```
 
-Для OpenMP нужен флаг `-fopenmp`, для Pthreads — `-pthread`. Все четыре команды соответствуют `scripts/build.sh` при настройке по умолчанию.
+Для OpenMP нужен флаг `-fopenmp`, для Pthreads — `-pthread`. Это соответствует `scripts/build.sh` с настройками по умолчанию.
 
-### Автоматическая сборка и профили компилятора
+### Автоматическая сборка с профилями компилятора
 
 ```bash
 bash scripts/build.sh
 OPT_FLAGS="-O2" bash scripts/build.sh
 ```
 
-Скрипт `run_profiles.sh` пересобирает программы для пяти профилей `O2`, `O3`, `native`, `unroll`, `novec`. Профили `native`, `unroll` и `novec` используют `ARCH=skylake-avx512` по умолчанию; архитектура должна соответствовать процессору кластера.
+Профили `native`, `unroll` и `novec` используют `ARCH=skylake-avx512` по умолчанию, если архитектура процессора это поддерживает.
 
 ## Локальные запуски
 
@@ -701,31 +701,45 @@ bash scripts/build.sh
 bash scripts/run_errors.sh ./heat_loop errors.csv
 ```
 
-### Измерение производительности
+### Производительность с повторениями
 
 ```bash
 PROFILE=O3 REPEATS=5 bash scripts/run_bench.sh bench_O3.csv
 ```
 
-Используются одинаковые размеры сеток и числа шагов для последовательной, OpenMP и Pthreads реализаций. Число нитей задаётся параметром `OMP_NUM_THREADS` для OpenMP и `--threads` для Pthreads; дополнительные настройки размещения OpenMP не задаются. Скрипт сохраняет профиль компиляции в CSV.
+Скрипт перебирает те же размеры сеток, числа временных шагов, количество нитей и значения $q=1,2,4,8$ во всех реализациях. Для OpenMP задаётся только `OMP_NUM_THREADS`; дополнительные переменные привязки не установлены.
 
-### Измерение пяти профилей
+### Сборка и измерение пяти профилей
 
 ```bash
 ARCH=skylake-avx512 REPEATS=5 bash scripts/run_profiles.sh
 ```
 
-Каждый профиль записывается в собственный CSV в каталоге `bench_profiles/`. При пяти повторениях и стандартном наборе параметров получается 1200 запусков на профиль.
+В локальном режиме каждый профиль записывается в `bench_profiles/O2.csv`, `O3.csv`, `native.csv`, `unroll.csv` и `novec.csv`.
 
 ## Запуск на кластере Slurm
 
-Для одного профиля можно отправить скрипт `scripts/run_cluster.sbatch` на вычислительный узел:
+Для исключения длительного задания пять повторений распределены между **пятью элементами массива заданий Slurm**. Один элемент запускает все конфигурации для своего профиля **один раз**, а номер повтора берёт из `SLURM_ARRAY_TASK_ID`.
+
+Для профиля `O3`:
 
 ```bash
 sbatch --export=ALL,PROFILES=O3 scripts/run_cluster.sbatch
 ```
 
-Для остальных профилей значение `PROFILES` меняется на `O2`, `native`, `unroll` или `novec`. Скрипт запрашивает 36 CPU на одном узле; настройки очереди (partition, ограничения времени) при необходимости задаются параметрами `sbatch` согласно правилам конкретного кластера. Запускать вычисления непосредственно на login-узле не следует. Для сопоставимости предпочтительны вычислительные узлы одинаковой архитектуры.
+В файле `run_cluster.sbatch` задан параметр `#SBATCH --array=1-5%1`: Slurm ставит в очередь пять заданий и выполняет не более одного задания этого массива одновременно. Для пяти профилей можно направить в очередь пять массивов:
+
+```bash
+for profile in O2 O3 native unroll novec; do
+  sbatch --export=ALL,PROFILES="$profile" scripts/run_cluster.sbatch
+done
+```
+
+Таким образом, для одного профиля требуется пять отдельных заданий, каждое из которых содержит **240 измерений** вместо 1200 в одном задании. Для пяти профилей общее количество измерений остаётся **6000** (25 элементов массива). Ограничение `%1` действует **внутри каждого массива**, а не между отдельными массивами разных профилей.
+
+Каждый элемент собирает программы в индивидуальном временном каталоге, чтобы не перезаписывать исполняемые файлы других заданий. Результаты складываются, например, в `bench_profiles/job_12345/O3_rep1.csv` … `O3_rep5.csv`, где `12345` — номер массива Slurm; журналы сохраняются по шаблону `heatcond-%A_%a.log`.
+
+Для каждого элемента нужен один вычислительный узел с 36 доступными CPU. Разделение уменьшает вероятность превышения лимита времени задания, но при строгом лимите даже 240 конфигураций могут оказаться слишком долгими; в таком случае можно дополнительно разделить исследование по размеру сетки. Параметры очереди и времени запуска уточняются для выбранного кластера.
 
 ## Полные тексты скриптов
 
@@ -776,10 +790,12 @@ output="${1:-bench_$(date +%Y%m%d_%H%M%S).csv}"
 repeats="${REPEATS:-5}"
 threads="${THREADS:-1 2 4 8 16 18 36}"
 profile="${PROFILE:-O3}"
+# Номер повтора задаётся Slurm при запуске массива заданий.
+repeat_index="${REPEAT_INDEX:-}"
 echo "profile,method,nx,ny,steps,t1,a,threads,unroll,repeat,time_s,mlups,checksum" > "$output"
 
-for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
-  read -r nx steps <<< "$config"
+for config in ${CONFIGS:-512:10000 1024:2000 2048:800 4096:800}; do
+  read -r nx steps <<< "${config/:/ }"
   for method in loop openmp pthread; do
     for p in $threads; do
       [[ "$method" == "loop" && "$p" != 1 ]] && continue
@@ -796,7 +812,7 @@ for config in "512 10000" "1024 2000" "2048 800" "4096 800"; do
           mlups=$(awk '/^MLUPS:/ {print $2}' <<< "$result")
           checksum=$(awk '/^Checksum:/ {print $2}' <<< "$result")
           [[ -n "$time_s" && -n "$mlups" && -n "$checksum" ]] || exit 1
-          echo "$profile,$method,$nx,$nx,$steps,0.001,0.1,$p,$q,$rep,$time_s,$mlups,$checksum" >> "$output"
+          echo "$profile,$method,$nx,$nx,$steps,0.001,0.1,$p,$q,${repeat_index:-$rep},$time_s,$mlups,$checksum" >> "$output"
         done
       done
     done
@@ -828,7 +844,7 @@ for profile in ${PROFILES:-O2 O3 native unroll novec}; do
 
   echo "Профиль $profile: $flags"
   OPT_FLAGS="$flags" bash scripts/build.sh
-  PROFILE="$profile" bash scripts/run_bench.sh "$dir/$profile.csv"
+  PROFILE="$profile" bash scripts/run_bench.sh "$dir/${profile}${REPEAT_INDEX:+_rep${REPEAT_INDEX}}.csv"
 done
 ```
 
@@ -840,15 +856,35 @@ done
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=36
-#SBATCH --output=heatcond-%j.log
+#SBATCH --array=1-5%1
+#SBATCH --output=heatcond-%A_%a.log
 
 set -euo pipefail
-cd "${SLURM_SUBMIT_DIR:-.}"
 
-# Один профиль на задание: PROFILES=O2/O3/native/unroll/novec.
+project="${SLURM_SUBMIT_DIR:?Нет SLURM_SUBMIT_DIR}"
+repeat="${SLURM_ARRAY_TASK_ID:?Скрипт нужно запускать через sbatch --array=1-5}"
+job_id="${SLURM_ARRAY_JOB_ID:?Нет SLURM_ARRAY_JOB_ID}"
+result_dir="$project/bench_profiles/job_$job_id"
+
+# Каждый элемент массива собирается в собственном временном каталоге:
+# параллельные задания не перезаписывают исполняемые файлы и временные CSV.
+workdir=$(mktemp -d "${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/heatcond_XXXXXX")
+trap 'rm -rf -- "$workdir"' EXIT
+mkdir -p "$workdir"/{loop,openmp,pthread,scripts} "$result_dir"
+cp "$project/sequence.cpp" "$workdir/"
+cp "$project/loop/sequence.loop.cpp" "$workdir/loop/"
+cp "$project/openmp/openmp.loop.cpp" "$workdir/openmp/"
+cp "$project/pthread/pthread.loop.cpp" "$workdir/pthread/"
+cp "$project/scripts/"{build.sh,run_bench.sh,run_profiles.sh} "$workdir/scripts/"
+cd "$workdir"
+
+# Один запуск каждой конфигурации в элементе массива; номер повтора
+# переносится в колонку repeat выходного CSV.
+RESULT_DIR="$result_dir" \
+REPEAT_INDEX="$repeat" \
+REPEATS=1 \
 PROFILES="${PROFILES:-O3}" \
 ARCH="${ARCH:-skylake-avx512}" \
-REPEATS="${REPEATS:-5}" \
 THREADS="${THREADS:-1 2 4 8 16 18 36}" \
 bash scripts/run_profiles.sh
 ```
