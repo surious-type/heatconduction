@@ -9,11 +9,30 @@
 
 set -euo pipefail
 
-# Модуль компилятора согласно конфигурации кластера.
-# В CI без реального Slurm проверяется логика скрипта на системном GCC.
+# На кластере используется модуль OpenMPI, указанный в настройках сервера.
+# OpenMPI здесь требуется для подготовки окружения, сама программа MPI не использует.
+# Вне Slurm (например, при тестировании CI) используется системный компилятор.
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then
-  module load gcc/gcc-7.4
+  if ! type module >/dev/null 2>&1; then
+    echo "Ошибка: команда module не настроена на вычислительном узле." >&2
+    exit 1
+  fi
+  if ! module load openmpi4/openmpi4; then
+    echo "Ошибка: не удалось загрузить модуль openmpi4/openmpi4." >&2
+    echo "Проверьте modulecmd и инициализацию системы modules на вычислительном узле." >&2
+    exit 1
+  fi
 fi
+
+cxx="${CXX:-g++}"
+if ! command -v "$cxx" >/dev/null 2>&1; then
+  echo "Ошибка: компилятор $cxx не найден в PATH после загрузки модуля." >&2
+  echo "PATH=$PATH" >&2
+  echo "Проверьте доступный компилятор: command -v g++; command -v mpicxx" >&2
+  exit 1
+fi
+echo "Компилятор: $(command -v "$cxx")"
+"$cxx" --version | head -n 1
 
 project="${SLURM_SUBMIT_DIR:?Нет SLURM_SUBMIT_DIR}"
 repeat="${SLURM_ARRAY_TASK_ID:?Скрипт нужно запускать через sbatch --array=1-5}"
