@@ -14,8 +14,8 @@ jobs:
       - name: Сборка GCC
         run: |
           bash scripts/build.sh
-          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -fopenmp openmp/openmp.loop.cpp -o /tmp/check_omp
-          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -pthread pthread/pthread.loop.cpp -o /tmp/check_pthread
+          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp openmp/openmp.loop.cpp -o /tmp/check_omp
+          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -Werror -pthread pthread/pthread.loop.cpp -o /tmp/check_pthread
       - name: Сравнение последовательной, OpenMP и Pthreads
         shell: bash
         run: |
@@ -35,6 +35,9 @@ jobs:
                   awk -v ref="$(awk '/^C-норма:/ {print $2}' /tmp/seq.out)" \
                       -v actual="$(awk '/^C-норма:/ {print $2}' "$result")" \
                       'BEGIN {d=ref-actual; if (d<0) d=-d; if (d>1e-7) exit 3}'
+                  awk -v ref="$(awk '/^l2-норма:/ {print $2}' /tmp/seq.out)" \
+                      -v actual="$(awk '/^l2-норма:/ {print $2}' "$result")" \
+                      'BEGIN {d=ref-actual; if (d<0) d=-d; if (d>1e-7) exit 4}'
                 done
               done
             done
