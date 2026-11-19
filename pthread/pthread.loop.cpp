@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -227,8 +228,8 @@ void relax(double *&U, const Config &cfg) {
   double *U_next = new double[size_t(Nx) * Ny];
 
   int num_threads = cfg.threads;
-  pthread_t threads[num_threads];
-  thread_args_t args[num_threads];
+  vector<pthread_t> threads(num_threads);
+  vector<thread_args_t> args(num_threads);
   sem_barrier_t b;
 
   sem_barrier_init(&b, num_threads);
