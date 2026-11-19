@@ -124,6 +124,19 @@ inline void update(const double *U, double *U_next, int i, int j, int Nx,
               ry * (U[k - Nx] - 2 * U[k] + U[k + Nx]);
 }
 
+
+template <int Q>
+inline void update_row(const double *U, double *U_next, int j, int Nx,
+                       double rx, double ry) {
+  int i = 1;
+  for (; i + Q <= Nx - 1; i += Q) {
+    for (int k = 0; k < Q; ++k)
+      update(U, U_next, i + k, j, Nx, rx, ry);
+  }
+  for (; i < Nx - 1; ++i)
+    update(U, U_next, i, j, Nx, rx, ry);
+}
+
 void *worker(void *argument) {
   auto *args = (thread_args_t *)argument;
   Data *data = args->data;
@@ -187,18 +200,6 @@ void *worker(void *argument) {
   return NULL;
 }
 
-
-template <int Q>
-inline void update_row(const double *U, double *U_next, int j, int Nx,
-                       double rx, double ry) {
-  int i = 1;
-  for (; i + Q <= Nx - 1; i += Q) {
-    for (int k = 0; k < Q; ++k)
-      update(U, U_next, i + k, j, Nx, rx, ry);
-  }
-  for (; i < Nx - 1; ++i)
-    update(U, U_next, i, j, Nx, rx, ry);
-}
 
 void relax(double *&U, const Config &cfg) {
   int loop = cfg.loop;
