@@ -354,10 +354,10 @@ void verify(double *U, Config &cfg) {
     }
   }
 
-  error_l2 = sqrt(error_l2 / (double(Nx) * Ny));
+  error_l2 = sqrt(hx * hy * error_l2);
 
   cout << "C-норма: " << error_inf << endl;
-  cout << "RMSE: " << error_l2 << endl;
+  cout << "l2-норма: " << error_l2 << endl;
 }
 
 void validate(Config &cfg) {
