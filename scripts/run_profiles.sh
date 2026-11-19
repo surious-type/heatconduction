@@ -17,5 +17,5 @@ for profile in ${PROFILES:-O2 O3 native unroll novec}; do
 
   echo "Профиль $profile: $flags"
   OPT_FLAGS="$flags" bash scripts/build.sh
-  PROFILE="$profile" bash scripts/run_bench.sh "$dir/$profile.csv"
+  PROFILE="$profile" bash scripts/run_bench.sh "$dir/${profile}${REPEAT_INDEX:+_rep${REPEAT_INDEX}}.csv"
 done
