@@ -104,7 +104,7 @@ void relax(double *&U, Config &cfg) {
         case 8: update_row<8>(U, U_next, j, Nx, rx, ry); break;
         }
       }
-
+    }
 
     // Граничные условия Неймана - второго рода
     for (int j = 1; j < Ny - 1; j++) {
