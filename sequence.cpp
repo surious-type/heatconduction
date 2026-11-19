@@ -154,10 +154,6 @@ void validate(Config &cfg) {
       cfg.Lx <= 0 || cfg.Ly <= 0 || cfg.a <= 0)
     throw invalid_argument("Некорректные параметры расчета");
 
-  if (!cfg.debug && cfg.N < 2) {
-    throw invalid_argument("Для измерения требуется минимум 2 шага");
-  }
-
   double a = cfg.a;
   double T = cfg.t1 - cfg.t0;
   double Lx = cfg.Lx;
