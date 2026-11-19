@@ -1,0 +1,31 @@
+name: Удаление временных веток после объединения
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cleanup-merged-branches.yml
+
+permissions:
+  contents: write
+
+jobs:
+  delete-temp-branches:
+    if: github.repository == 'surious-type/heatconduction'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Удалить только пять веток предыдущих PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            'fix/rmse-and-full-timing-20261119' \
+            'feat/first-touch-and-loop-cycles-20261119' \
+            'test/unified-bench-scripts-20261119' \
+            'feat/compiler-profiles-bench-20261119' \
+            'docs/methodology-before-new-results-20261119'; do
+            echo "Удаление: $branch"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}"
+          done
