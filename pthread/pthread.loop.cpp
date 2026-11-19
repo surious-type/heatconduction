@@ -147,7 +147,6 @@ void *worker(void *argument) {
   double t0 = cfg->t0;
   double tau = data->tau;
   int Nx = cfg->Nx;
-  int Ny = cfg->Ny;
   double hx = data->hx;
   double hy = data->hy;
   int loop = cfg->loop;
@@ -234,7 +233,7 @@ void relax(double *&U, const Config &cfg) {
 
   sem_barrier_init(&b, num_threads);
 
-  Data data = {&cfg, U, U_next, hx, hy, tau, rx, ry, &b};
+  Data data = {&cfg, U, U_next, hx, hy, tau, rx, ry, &b, {}, {}};
   for (int i = 0; i < num_threads; i++) {
     args[i].thread_num = i;
     args[i].num_threads = num_threads;
