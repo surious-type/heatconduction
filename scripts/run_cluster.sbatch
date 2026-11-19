@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=heatcond
+#SBATCH --time=1:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=36
@@ -7,6 +8,12 @@
 #SBATCH --output=heatcond-%A_%a.log
 
 set -euo pipefail
+
+# Модуль компилятора согласно конфигурации кластера.
+# В CI без реального Slurm проверяется логика скрипта на системном GCC.
+if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+  module load gcc/gcc-7.4
+fi
 
 project="${SLURM_SUBMIT_DIR:?Нет SLURM_SUBMIT_DIR}"
 repeat="${SLURM_ARRAY_TASK_ID:?Скрипт нужно запускать через sbatch --array=1-5}"
