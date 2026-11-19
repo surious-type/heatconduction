@@ -30,6 +30,22 @@ jobs:
           done
           bash -n scripts/build.sh scripts/run_bench.sh scripts/run_profiles.sh
           OPT_FLAGS="-O3" bash scripts/build.sh
+      - name: Проверка массива заданий Slurm (имитация двух повторов)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/run_cluster.sbatch scripts/run_profiles.sh scripts/run_bench.sh
+          for i in 1 2; do
+            SLURM_SUBMIT_DIR="$PWD" SLURM_ARRAY_JOB_ID=900001 \
+              SLURM_ARRAY_TASK_ID="$i" CONFIGS="16:10" THREADS="1 2" \
+              PROFILES=O3 ARCH=native bash scripts/run_cluster.sbatch
+            file="bench_profiles/job_900001/O3_rep${i}.csv"
+            test -f "$file"
+            test "$(wc -l < "$file")" -eq 21
+            awk -F, -v id="$i" 'NR==1 {if ($10!="repeat")exit 1} NR>1 {if ($10!=id) exit 2}' "$file"
+          done
+          test -f bench_profiles/job_900001/O3_rep1.csv
+          test -f bench_profiles/job_900001/O3_rep2.csv
       - name: Сравнение последовательной, OpenMP и Pthreads
         shell: bash
         run: |
