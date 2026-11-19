@@ -6,9 +6,6 @@
 #include <iostream>
 #include <pthread.h>
 #include <semaphore.h>
-#ifdef __linux__
-#include <sched.h>
-#endif
 #include <string>
 
 using namespace std;
@@ -51,8 +48,6 @@ typedef struct {
   int num_threads;
   int j_start;
   int j_stop;
-  int init_j_start;
-  int init_j_stop;
   sem_barrier_t *sem_barrier;
   Data *data;
 } thread_args_t;
@@ -142,33 +137,6 @@ inline void update_row(const double *U, double *U_next, int j, int Nx,
 }
 
 
-#ifdef __linux__
-void bind_worker_to_cpu(int thread_num) {
-  // Учитываем ограничения cpuset, установленные системой очередей кластера.
-  cpu_set_t allowed;
-  CPU_ZERO(&allowed);
-  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0)
-    return;
-
-  const int available = CPU_COUNT(&allowed);
-  if (available <= 0)
-    return;
-  int index = thread_num % available;
-  for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
-    if (CPU_ISSET(cpu, &allowed) && index-- == 0) {
-      cpu_set_t target;
-      CPU_ZERO(&target);
-      CPU_SET(cpu, &target);
-      const int status =
-          pthread_setaffinity_np(pthread_self(), sizeof(target), &target);
-      if (status != 0)
-        fprintf(stderr, "Предупреждение: не удалось закрепить нить %d за CPU %d (код %d)\n",
-                thread_num, cpu, status);
-      return;
-    }
-  }
-}
-#endif
 
 void *worker(void *argument) {
   auto *args = (thread_args_t *)argument;
@@ -190,12 +158,11 @@ void *worker(void *argument) {
   int j_start = args->j_start;
   int j_stop = args->j_stop;
 
-#ifdef __linux__
-  bind_worker_to_cpu(args->thread_num);
-#endif
-
-  // First touch: инициализация всех строк, включая граничные, рабочими нитями.
-  for (int j = args->init_j_start; j < args->init_j_stop; ++j) {
+  // First touch: каждая нить инициализирует свои рабочие строки.
+  // Первой и последней нитям также достаются граничные строки.
+  int init_start = j_start - (args->thread_num == 0);
+  int init_stop = j_stop + (args->thread_num == args->num_threads - 1);
+  for (int j = init_start; j < init_stop; ++j) {
     for (int i = 0; i < Nx; ++i) {
       const size_t k = size_t(j) * Nx + i;
       data->U[k] = u_exact(t0, i * hx, j * hy, Lx, Ly);
@@ -273,8 +240,6 @@ void relax(double *&U, const Config &cfg) {
     args[i].sem_barrier = &b;
     args[i].j_start = 1 + (Ny - 2) * i / num_threads;
     args[i].j_stop = 1 + (Ny - 2) * (i + 1) / num_threads;
-    args[i].init_j_start = Ny * i / num_threads;
-    args[i].init_j_stop = Ny * (i + 1) / num_threads;
     args[i].data = &data;
 
     int status = pthread_create(&threads[i], NULL, worker, &args[i]);
