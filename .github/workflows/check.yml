@@ -1,0 +1,45 @@
+name: Проверка сборки и корректности
+
+on:
+  push:
+    branches:
+      - feat/first-touch-and-loop-cycles-20261119
+  pull_request:
+
+jobs:
+  compile-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка GCC
+        run: |
+          bash scripts/build.sh
+          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -fopenmp openmp/openmp.loop.cpp -o /tmp/check_omp
+          g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -pthread pthread/pthread.loop.cpp -o /tmp/check_pthread
+      - name: Сравнение последовательной, OpenMP и Pthreads
+        shell: bash
+        run: |
+          set -euo pipefail
+          for config in "13 11 17" "7 5 12"; do
+            read -r nx ny steps <<< "$config"
+            base=(--Nx "$nx" --Ny "$ny" --N "$steps" --t0 0 --t1 0.001 --a 0.1 --Lx 1 --Ly 1 --debug 1)
+            ./heat_original "${base[@]}" > /tmp/seq.out
+            for q in 1 2 4 8; do
+              ./heat_loop "${base[@]}" --loop "$q" > /tmp/loop.out
+              for p in 1 2 4 8; do
+                OMP_NUM_THREADS="$p" OMP_PLACES=cores OMP_PROC_BIND=close \
+                  timeout 20s ./heat_omp "${base[@]}" --loop "$q" > /tmp/omp.out
+                timeout 20s ./heat_pthread "${base[@]}" --loop "$q" --threads "$p" > /tmp/pthread.out
+                for result in /tmp/loop.out /tmp/omp.out /tmp/pthread.out; do
+                  awk '/^C-норма:/ {c=$2} /^l2-норма:/ {l=$2} END {if (c==""||l=="") exit 2}' "$result"
+                  awk -v ref="$(awk '/^C-норма:/ {print $2}' /tmp/seq.out)" \
+                      -v actual="$(awk '/^C-норма:/ {print $2}' "$result")" \
+                      'BEGIN {d=ref-actual; if (d<0) d=-d; if (d>1e-7) exit 3}'
+                done
+              done
+            done
+          done
+      - name: Проверка скрипта ошибки
+        run: |
+          bash scripts/run_errors.sh ./heat_loop /tmp/errors.csv
+          test "$(wc -l < /tmp/errors.csv)" -eq 5
