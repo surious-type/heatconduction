@@ -1,0 +1,32 @@
+name: PDF отчёта
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "report/report.md"
+      - "figures/2026/**"
+      - "errors/**"
+      - "results/2026/**"
+      - "scripts/build_pdf.sh"
+      - ".github/workflows/report-pdf.yml"
+  workflow_dispatch:
+
+jobs:
+  build-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Установить Pandoc, XeLaTeX и конвертер SVG
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            pandoc texlive-xetex texlive-lang-cyrillic librsvg2-bin fonts-dejavu-core
+      - name: Собрать отчёт
+        run: bash scripts/build_pdf.sh
+      - name: Сохранить готовый PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: heatconduction-report-pdf
+          path: report/report.pdf
+          if-no-files-found: error
