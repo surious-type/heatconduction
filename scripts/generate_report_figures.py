@@ -301,6 +301,33 @@ def classic_method_speedup(d,method):
                         wspace=.14,hspace=.26)
     classic_save(fig,method+"_speedup.png")
 
+def classic_error_chart():
+    """Plot verification error from the four already measured diagonal cases."""
+    source = ROOT / "errors/errors_grid_full.csv"
+    with source.open(newline="", encoding="utf-8") as fh:
+        rows = [row for row in csv.DictReader(fh)
+                if row["status"] == "ok" and row["source"] == "existing"]
+    if len(rows) != 4:
+        raise ValueError(f"Ожидались четыре значения погрешности: {len(rows)}")
+    rows.sort(key=lambda r: float(r["h"]))
+    hs = [float(row["h"]) for row in rows]
+    fig, ax = plt.subplots(figsize=(8.3, 5.2))
+    for field, label, color in (
+            ("error_c", "C-norm", "C0"), ("error_l2", "L2-norm", "C1")):
+        ax.loglog(hs, [float(row[field]) for row in rows],
+                  "-o", color=color, label=label, ms=6)
+    ax.set_title("Error convergence (tau = 10 h²)")
+    ax.set_xlabel("Spatial step h")
+    ax.set_ylabel("Absolute error")
+    ax.grid(True, which="both", color=".8", alpha=.45)
+    ax.legend()
+    fig.tight_layout()
+    target = ROOT / "figures/2026/error_convergence.png"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(target, dpi=210, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main():
     d=load()
     for kind in ("time","mlups","speedup","efficiency","compiler_comparison"):
@@ -310,7 +337,8 @@ def main():
     classic_loop_compiler(d)
     for method in ("openmp","pthread"):
         classic_method_speedup(d,method)
-    print("Сформированы 11 классических графиков Matplotlib:", OUT)
+    classic_error_chart()
+    print("Сформированы 12 графиков Matplotlib:", OUT)
 
 if __name__ == "__main__":
     main()
