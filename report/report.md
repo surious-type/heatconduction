@@ -819,7 +819,7 @@ pandoc report/report.md -o report/report.pdf \
   --pdf-engine=xelatex --resource-path=report:. \
   -V mainfont="DejaVu Serif" -V sansfont="DejaVu Sans" \
   -V monofont="DejaVu Sans Mono" -V lang=ru-RU \
-  -V geometry:margin=2cm
+  -V papersize=a4 -V geometry:margin=2cm
 ```
 
 Пакеты для Ubuntu: `sudo apt install pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core`. Векторные графики SVG преобразуются автоматически через `rsvg-convert`.
