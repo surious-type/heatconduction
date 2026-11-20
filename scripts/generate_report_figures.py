@@ -59,9 +59,9 @@ def val(data, grid, method, *, profile="O3", threads=None, q=8, metric="mlups"):
     return data[(profile, grid, method, threads, q)][metric]
 
 
-def acceleration(data, grid, method, p, q=8):
-    return val(data, grid, method, threads=1, q=q, metric="time") / val(
-        data, grid, method, threads=p, q=q, metric="time")
+def acceleration(data, grid, method, p, q=8, profile="O3"):
+    return val(data, grid, method, threads=1, q=q, profile=profile, metric="time") / val(
+        data, grid, method, threads=p, q=q, profile=profile, metric="time")
 
 
 def newfig(figsize=(10.4, 5.7)):
