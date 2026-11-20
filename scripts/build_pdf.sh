@@ -29,7 +29,7 @@ done
 # использует относительный путь assets/msu-building.png.
 cd "$root/report"
 pandoc report.md -o report.pdf \
-  --standalone --toc --toc-depth=3 --number-sections \
+  --standalone --toc --toc-depth=2 --number-sections \
   --lua-filter=titlepage.lua \
   --from markdown+tex_math_dollars+tex_math_single_backslash \
   --pdf-engine=xelatex \
