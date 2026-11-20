@@ -9,6 +9,7 @@ on:
       - "errors/**"
       - "results/2026/**"
       - "scripts/build_pdf.sh"
+      - "scripts/generate_report_figures.py"
       - ".github/workflows/report-pdf.yml"
   workflow_dispatch:
 
@@ -23,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core
+            pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core python3-matplotlib
       - name: Собрать отчёт
         run: bash scripts/build_pdf.sh
       - name: Опубликовать PNG-графики для Markdown в GitHub
@@ -32,7 +33,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add figures/2026/*.png
+          git add figures/2026/*.png figures/2026/classic/*.png
           if ! git diff --cached --quiet; then
             git commit -m "Синхронизировать PNG-графики отчёта"
             git push origin HEAD:main
