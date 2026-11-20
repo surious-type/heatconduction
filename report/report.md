@@ -815,6 +815,7 @@ OPT_FLAGS="-O2" bash scripts/build.sh
 
 ```bash
 pandoc report/report.md -o report/report.pdf \
+  --from markdown+tex_math_dollars+tex_math_single_backslash \
   --pdf-engine=xelatex --resource-path=report:. \
   -V mainfont="DejaVu Serif" -V sansfont="DejaVu Sans" \
   -V monofont="DejaVu Sans Mono" -V lang=ru-RU \
