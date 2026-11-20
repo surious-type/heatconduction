@@ -811,18 +811,26 @@ OPT_FLAGS="-O2" bash scripts/build.sh
 
 ## Компиляция PDF
 
-Из корня репозитория на Linux после установки `pandoc`, `xelatex`, `rsvg-convert` и шрифтов DejaVu:
+Используется прежняя система оформления отчёта: титульный лист формируется
+фильтром `report/titlepage.lua`, оглавление создаётся автоматически через
+`--toc` на отдельной странице, крупные разделы начинаются с новой страницы.
+Рисунки вставляются **в формате PNG** и сохраняются в `figures/2026/`.
+
+Для Ubuntu необходимы пакеты:
 
 ```bash
-pandoc report/report.md -o report/report.pdf \
-  --from markdown+tex_math_dollars+tex_math_single_backslash \
-  --pdf-engine=xelatex --resource-path=report:. \
-  -V mainfont="DejaVu Serif" -V sansfont="DejaVu Sans" \
-  -V monofont="DejaVu Sans Mono" -V lang=ru-RU \
-  -V papersize=a4 -V geometry:margin=2cm
+sudo apt install pandoc texlive-xetex texlive-lang-cyrillic \
+  texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core
 ```
 
-Пакеты для Ubuntu: `sudo apt install pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core`. Векторные графики SVG преобразуются автоматически через `rsvg-convert`.
+Из корня проекта достаточно выполнить:
+
+```bash
+bash scripts/build_pdf.sh
+```
+
+Файл будет создан по пути `report/report.pdf`. Скрипт сам обновляет PNG
+из исходных SVG, подключает титульный лист и содержание, использует формат A4.
 
 ## Локальные запуски
 
