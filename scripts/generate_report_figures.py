@@ -137,57 +137,180 @@ def speed_curves(data, method, name):
     save(fig, name)
 
 
-def main():
-    d = load()
-    subtitle = "Профиль O3, q=8; параллельные версии — 36 потоков; медиана 5 запусков"
-    grouped(d, "time.png", "Нормированное время одного обновления", "Время на узел, нс",
-            ("loop", "openmp", "pthread"),
-            lambda grid, method: 1000.0 / val(d, grid, method),
-            subtitle=subtitle)
-    grouped(d, "mlups.png", "Производительность трёх реализаций", "MLUPS",
-            ("loop", "openmp", "pthread"),
-            lambda grid, method: val(d, grid, method),
-            subtitle=subtitle)
-    grouped(d, "speedup.png", "Ускорение на 36 потоках", "Ускорение S(36)",
-            ("openmp", "pthread"),
-            lambda grid, method: acceleration(d, grid, method, 36),
-            subtitle="Профиль O3, q=8; база — один поток того же метода")
-    grouped(d, "efficiency.png", "Эффективность на 36 потоках", "Эффективность, %",
-            ("openmp", "pthread"),
-            lambda grid, method: 100 * acceleration(d, grid, method, 36) / 36,
-            subtitle="Профиль O3, q=8; ускорение относительно одного потока")
-    compare_by_q(d, "loop", "loop_unroll_comparison.png",
-                 "Последовательная версия: влияние группировки q", 1)
-    compare_compiler(d, "loop", "loop_compiler_comparison.png",
-                     "Последовательная версия: профили компиляции", 1)
-    compare_by_q(d, "openmp", "openmp_unroll_comparison.png",
-                 "OpenMP: влияние группировки q", 36)
-    compare_by_q(d, "pthread", "pthread_unroll_comparison.png",
-                 "Pthreads: влияние группировки q", 36)
-    speed_curves(d, "openmp", "openmp_speedup.png")
-    speed_curves(d, "pthread", "pthread_speedup.png")
 
-    # На одной диаграмме сравниваем профили компиляции обеих параллельных версий
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8.0), layout="constrained")
+# Classic Matplotlib layout reconstructed after comparing the legacy diagrams.
+# The series are computed from the 1200 medians (five repetitions per config).
+from matplotlib.lines import Line2D
+
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "font.size": 10,
+    "axes.titlesize": 10,
+    "axes.labelsize": 10,
+    "lines.linewidth": 1.55,
+    "lines.markersize": 3.3,
+    "figure.facecolor": "white",
+    "savefig.facecolor": "white",
+})
+
+def classic_axis(ax):
+    ax.grid(True, color="#b0b0b0", linewidth=.65, alpha=.28)
+    ax.set_axisbelow(True)
+    ax.tick_params(labelsize=8, length=3)
+
+def classic_save(fig, name):
+    OUT.mkdir(parents=True, exist_ok=True)
+    fig.savefig(OUT / name, dpi=210, bbox_inches="tight", pad_inches=.15)
+    plt.close(fig)
+
+def classic_comparison(d, kind):
+    meta = {
+        "time": ("Comparative time / O3 / all grids and unroll", "ns / update"),
+        "mlups": ("Comparative mlups / O3 / all grids and unroll", "MLUPS"),
+        "speedup": ("Comparative speedup / O3 / all grids and unroll", "Speedup"),
+        "efficiency": ("Comparative efficiency / O3 / all grids and unroll", "Efficiency"),
+        "compiler_comparison": ("Comparative compiler_comparison / O3 / all grids and unroll", "MLUPS / O3"),
+    }
+    title, ylabel = meta[kind]
+    fig, axs = plt.subplots(4, 4, figsize=(18, 14.4))
+    fig.suptitle(title, fontsize=16, y=.992)
+    for row, grid in enumerate(GRIDS):
+        for col, q in enumerate(QS):
+            ax = axs[row, col]
+            ax.set_title(f"{grid}² ×{q}", fontsize=9, pad=7)
+            classic_axis(ax)
+            if kind != "compiler_comparison":
+                if kind == "time":
+                    op = [1000 / val(d, grid, "openmp", threads=p, q=q) for p in THREADS]
+                    pt = [1000 / val(d, grid, "pthread", threads=p, q=q) for p in THREADS]
+                    ax.axhline(1000 / val(d, grid, "loop", q=q),
+                               color="C0", ls="--", lw=1.25)
+                elif kind == "mlups":
+                    op = [val(d, grid, "openmp", threads=p, q=q) for p in THREADS]
+                    pt = [val(d, grid, "pthread", threads=p, q=q) for p in THREADS]
+                    ax.axhline(val(d, grid, "loop", q=q),
+                               color="C0", ls="--", lw=1.25)
+                elif kind == "speedup":
+                    op = [acceleration(d, grid, "openmp", p, q=q) for p in THREADS]
+                    pt = [acceleration(d, grid, "pthread", p, q=q) for p in THREADS]
+                    ax.plot(THREADS, THREADS, color=".3", ls=":", lw=.95)
+                    ax.set_ylim(0, 39)
+                else:
+                    op = [acceleration(d, grid, "openmp", p, q=q) / p for p in THREADS]
+                    pt = [acceleration(d, grid, "pthread", p, q=q) / p for p in THREADS]
+                    ax.axhline(1, color=".35", ls=":", lw=.95)
+                ax.plot(THREADS, op, "-o", color="C0", label="openmp")
+                ax.plot(THREADS, pt, "-o", color="C1", label="pthread")
+                ax.set_xlim(.3, 37.5)
+                ax.set_xticks(THREADS if kind in ("speedup", "efficiency")
+                              else (1, 4, 8, 16, 18, 36))
+                if kind in ("speedup", "efficiency"):
+                    ax.tick_params(axis="x", labelsize=7)
+            else:
+                xpos = np.arange(len(PROFILES))
+                for method, color in (("loop", "C0"), ("openmp", "C1"), ("pthread", "C2")):
+                    threads = 1 if method == "loop" else 36
+                    baseline = val(d, grid, method, profile="O3", threads=threads, q=q)
+                    yy = [val(d, grid, method, profile=pr, threads=threads, q=q) / baseline
+                          for pr in PROFILES]
+                    ax.plot(xpos, yy, "-o", color=color, label=method)
+                ax.set_xticks(xpos, PROFILES, fontsize=8)
+                ax.axhline(1, color=".45", ls=":", lw=.9)
+            if col == 0:
+                ax.set_ylabel(ylabel, fontsize=9)
+            if row == 3 and kind != "compiler_comparison":
+                ax.set_xlabel("Threads", fontsize=9)
+    if kind == "compiler_comparison":
+        handles = [Line2D([0], [0], color=c, marker="o", lw=1.5, label=m)
+                   for m,c in (("loop","C0"),("openmp","C1"),("pthread","C2"))]
+    else:
+        handles = [Line2D([0], [0], color=c, marker="o", lw=1.5, label=m)
+                   for m,c in (("openmp","C0"),("pthread","C1"))]
+        if kind in ("time", "mlups"):
+            handles.append(Line2D([0], [0], color="C0", ls="--", label="loop"))
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles),
+               bbox_to_anchor=(.5,.004), frameon=False)
+    fig.subplots_adjust(top=.955,bottom=.060,left=.047,right=.987,
+                        wspace=.14,hspace=.26)
+    classic_save(fig, kind+".png")
+
+def classic_unroll(d, method):
+    fig, axes = plt.subplots(2, 2, figsize=(12.8, 9.0))
+    fig.suptitle(f"{method.upper()} unrolling / all grids and compiler profiles",
+                 fontsize=16, y=.995)
     for grid, ax in zip(GRIDS, axes.flat):
-        x = np.arange(len(PROFILES))
-        width = 0.38
-        for i, method in enumerate(("openmp", "pthread")):
-            values = [val(d, grid, method, profile=pr) for pr in PROFILES]
-            ax.bar(x + (i - .5) * width, values, width=width * .96,
-                   label=METHOD_LABELS[method], color=COLORS[method])
-        ax.set_xticks(x, PROFILES, rotation=15)
-        ax.set_title(f"Сетка {grid}²")
-        ax.set_ylabel("MLUPS")
-        ax.grid(axis="y", alpha=.4)
-        ax.set_axisbelow(True)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=2, bbox_to_anchor=(.5, .965))
-    fig.suptitle("Профили компиляции: OpenMP и Pthreads · 36 потоков, q=8",
-                 fontsize=14, fontweight="bold", y=0.995)
-    save(fig, "compiler_comparison.png")
-    print(f"Сформированы 11 графиков в {OUT}")
+        ax.set_title(f"{grid}²", fontsize=11)
+        classic_axis(ax)
+        for i, pr in enumerate(PROFILES):
+            threads = 1 if method == "loop" else 36
+            y = [val(d, grid, method, profile=pr, threads=threads, q=q) for q in QS]
+            ax.plot(QS, y, "-o", color=f"C{i}", lw=1.9, ms=5, label=pr)
+        ax.set_xticks(QS)
+        ax.set_xlabel("Unroll factor",fontsize=10)
+        ax.set_ylabel("MLUPS",fontsize=10)
+    handles, labels = axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles,labels,ncol=5,loc="lower center",frameon=False,
+               bbox_to_anchor=(.5,.007))
+    fig.subplots_adjust(top=.932,bottom=.100,left=.08,right=.985,
+                        wspace=.14,hspace=.22)
+    classic_save(fig,method+"_unroll_comparison.png")
 
+def classic_loop_compiler(d):
+    fig,axes=plt.subplots(4,4,figsize=(18.0,14.4))
+    fig.suptitle("LOOP compiler profiles / all grids and unroll",
+                 fontsize=16,y=.992)
+    for row,grid in enumerate(GRIDS):
+        for col,q in enumerate(QS):
+            ax=axes[row,col]
+            classic_axis(ax)
+            ax.set_title(f"{grid}² ×{q}",fontsize=9,pad=7)
+            base=val(d,grid,"loop",profile="O3",threads=1,q=q)
+            y=[val(d,grid,"loop",profile=pr,threads=1,q=q)/base
+               for pr in PROFILES]
+            ax.bar(PROFILES,y,color="C0",width=.8)
+            ax.axhline(1,color="black",ls=":",lw=1.3)
+            ax.tick_params(axis="x",labelrotation=27)
+            if col==0: ax.set_ylabel("Relative MLUPS / O3",fontsize=9)
+    fig.subplots_adjust(top=.955,bottom=.052,left=.047,right=.987,
+                        wspace=.14,hspace=.21)
+    classic_save(fig,"loop_compiler_comparison.png")
+
+def classic_method_speedup(d,method):
+    fig,axes=plt.subplots(4,4,figsize=(18.0,14.4))
+    fig.suptitle(f"{method.upper()} / speedup / all grids and unroll",
+                 fontsize=16,y=.992)
+    for row,grid in enumerate(GRIDS):
+        for col,q in enumerate(QS):
+            ax=axes[row,col]
+            classic_axis(ax)
+            ax.set_title(f"{grid}² ×{q}",fontsize=9,pad=7)
+            ax.plot(THREADS,THREADS,color=".3",ls=":",lw=1)
+            for i,pr in enumerate(PROFILES):
+                y=[acceleration(d,grid,method,p,q=q,profile=pr) for p in THREADS]
+                ax.plot(THREADS,y,"-o",color=f"C{i}",label=pr)
+            ax.set_ylim(0,39)
+            ax.set_xticks(THREADS)
+            ax.tick_params(axis="x",labelsize=7)
+            if col==0:ax.set_ylabel("Speedup",fontsize=9)
+            if row==3:ax.set_xlabel("Threads",fontsize=9)
+    handles=[Line2D([0],[0],color=f"C{i}",marker="o",label=pr)
+             for i,pr in enumerate(PROFILES)]
+    fig.legend(handles=handles,loc="lower center",ncol=5,frameon=False,
+               bbox_to_anchor=(.5,.007))
+    fig.subplots_adjust(top=.955,bottom=.060,left=.047,right=.987,
+                        wspace=.14,hspace=.26)
+    classic_save(fig,method+"_speedup.png")
+
+def main():
+    d=load()
+    for kind in ("time","mlups","speedup","efficiency","compiler_comparison"):
+        classic_comparison(d,kind)
+    for method in ("loop","openmp","pthread"):
+        classic_unroll(d,method)
+    classic_loop_compiler(d)
+    for method in ("openmp","pthread"):
+        classic_method_speedup(d,method)
+    print("Сформированы 11 классических графиков Matplotlib:", OUT)
 
 if __name__ == "__main__":
     main()
