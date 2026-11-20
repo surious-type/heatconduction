@@ -72,7 +72,7 @@ def run_case(executable, nx, steps):
 
 def write_csv(path, header, rows):
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
+        writer = csv.writer(f, lineterminator="\n")
         writer.writerow(header)
         writer.writerows(rows)
 
