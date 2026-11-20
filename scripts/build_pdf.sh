@@ -12,7 +12,7 @@ for program in pandoc xelatex rsvg-convert; do
 done
 
 pandoc report/report.md -o report/report.pdf \
-  --from markdown+tex_math_dollars \
+  --from markdown+tex_math_dollars+tex_math_single_backslash \
   --pdf-engine=xelatex \
   --resource-path=report:. \
   -V mainfont="DejaVu Serif" \
