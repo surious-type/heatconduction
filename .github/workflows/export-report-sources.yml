@@ -1,0 +1,21 @@
+name: Snapshot report sources
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/export-report-sources.yml"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package report sources
+        run: |
+          zip -q -r report-sources.zip report figures results/2026/summary_1200.csv scripts/build_pdf.sh scripts/generate_report_figures.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heatconduction-report-sources
+          path: report-sources.zip
+          retention-days: 1
