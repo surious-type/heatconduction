@@ -6,7 +6,7 @@ cd "$root"
 
 for program in pandoc xelatex rsvg-convert; do
   if ! command -v "$program" >/dev/null 2>&1; then
-    echo "Не найдена команда $program. Для Ubuntu установите: sudo apt install pandoc texlive-xetex texlive-lang-cyrillic lmodern librsvg2-bin fonts-dejavu-core" >&2
+    echo "Не найдена команда $program. Для Ubuntu установите: sudo apt install pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core" >&2
     exit 1
   fi
 done
