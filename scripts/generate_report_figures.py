@@ -90,8 +90,6 @@ def grouped(data, name, title, ylabel, methods, extractor, *, subtitle):
     ax.set_xlabel("Размер квадратной сетки")
     ax.set_ylabel(ylabel)
     ax.set_title(title)
-    ax.text(0, 1.012, subtitle, transform=ax.transAxes, color="#596778",
-            fontsize=9.3, va="bottom")
     ax.legend(ncol=len(methods), loc="upper left")
     save(fig, name)
 
@@ -106,8 +104,6 @@ def compare_by_q(data, method, name, title, threads):
     ax.set_xlabel("Параметр группировки цикла q")
     ax.set_ylabel("Производительность, MLUPS")
     ax.set_title(title)
-    ax.text(0, 1.012, f"Профиль O3; {threads} потоков; медиана 5 запусков",
-            transform=ax.transAxes, color="#596778", fontsize=9.3, va="bottom")
     ax.legend(title="Сетка", ncol=2)
     save(fig, name)
 
@@ -137,8 +133,6 @@ def speed_curves(data, method, name):
     ax.set_xlabel("Число потоков P")
     ax.set_ylabel("Ускорение S(P)")
     ax.set_title(f"{METHOD_LABELS[method]}: ускорение при увеличении числа потоков")
-    ax.text(0, 1.012, "Профиль O3; q=8; база — один поток того же метода",
-            transform=ax.transAxes, fontsize=9.3, color="#596778", va="bottom")
     ax.legend(ncol=2)
     save(fig, name)
 
@@ -190,7 +184,7 @@ def main():
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper center", ncol=2, bbox_to_anchor=(.5, .965))
     fig.suptitle("Профили компиляции: OpenMP и Pthreads · 36 потоков, q=8",
-                 fontsize=14, fontweight="bold", y=1.01)
+                 fontsize=14, fontweight="bold", y=0.995)
     save(fig, "compiler_comparison.png")
     print(f"Сформированы 11 графиков в {OUT}")
 
