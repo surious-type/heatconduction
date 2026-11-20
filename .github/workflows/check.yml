@@ -30,6 +30,32 @@ jobs:
           done
           bash -n scripts/build.sh scripts/run_bench.sh scripts/run_profiles.sh
           OPT_FLAGS="-O3" bash scripts/build.sh
+      - name: Проверка таблиц погрешности h × tau
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/run_error_grid.py
+          tmpdir=$(mktemp -d)
+          cat > "$tmpdir/old.csv" <<'CSV'
+          nx,ny,steps,t1,a,error_c,error_l2
+          101,101,10,0.01,0.1,1e-7,5e-8
+          201,201,40,0.01,0.1,1e-7,5e-8
+          401,401,160,0.01,0.1,1e-7,5e-8
+          801,801,640,0.01,0.1,1e-7,5e-8
+          CSV
+          cat > "$tmpdir/fake_solver.sh" <<'SH'
+          #!/usr/bin/env bash
+          printf 'C-норма: 1e-7\nl2-норма: 5e-8\n'
+          SH
+          chmod +x "$tmpdir/fake_solver.sh"
+          python3 scripts/run_error_grid.py --program "$tmpdir/fake_solver.sh" \
+            --existing "$tmpdir/old.csv" --output-dir "$tmpdir"
+          test "$(wc -l < "$tmpdir/errors_grid_full.csv")" -eq 17
+          test "$(wc -l < "$tmpdir/errors_matrix_c.csv")" -eq 5
+          test "$(wc -l < "$tmpdir/errors_matrix_l2.csv")" -eq 5
+          awk -F, 'NR>1 {count[$11]++} END {
+            if(count["existing"]!=4 || count["computed"]!=6 || count["-"]!=6) exit 1
+          }' "$tmpdir/errors_grid_full.csv"
       - name: Проверка массива заданий Slurm (имитация двух повторов)
         shell: bash
         run: |
