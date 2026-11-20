@@ -13,6 +13,10 @@ on:
       - ".github/workflows/report-pdf.yml"
   workflow_dispatch:
 
+concurrency:
+  group: heatconduction-report-main
+  cancel-in-progress: true
+
 jobs:
   build-pdf:
     runs-on: ubuntu-latest
@@ -36,6 +40,9 @@ jobs:
           git add figures/2026/*.png figures/2026/classic/*.png
           if ! git diff --cached --quiet; then
             git commit -m "Синхронизировать PNG-графики отчёта"
+            # Сборки предыдущих коммитов могли совпасть по времени:
+            # перебазируемся на актуальный main вместо перезаписи чужих правок.
+            git pull --rebase origin main
             git push origin HEAD:main
           fi
       - name: Сохранить готовый PDF
