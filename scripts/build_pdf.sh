@@ -5,12 +5,15 @@ set -euo pipefail
 # исходным Lua-фильтром report/titlepage.lua (из старой версии отчёта).
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for program in pandoc xelatex rsvg-convert; do
+for program in pandoc xelatex rsvg-convert python3; do
   if ! command -v "$program" >/dev/null 2>&1; then
-    echo "Отсутствует $program. Установите: sudo apt install pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core" >&2
+    echo "Отсутствует $program. Установите: sudo apt install pandoc texlive-xetex texlive-lang-cyrillic texlive-fonts-recommended lmodern librsvg2-bin fonts-dejavu-core python3-matplotlib" >&2
     exit 1
   fi
 done
+
+# Восстанавливаем все 11 диаграмм прежнего отчёта из новой серии медиан.
+python3 "$root/scripts/generate_report_figures.py"
 
 # Для Markdown/GitHub и PDF используются PNG, а не SVG.
 # Источники SVG сохраняются в проекте как редактируемые графики.
@@ -26,7 +29,7 @@ done
 # использует относительный путь assets/msu-building.png.
 cd "$root/report"
 pandoc report.md -o report.pdf \
-  --standalone --toc --toc-depth=2 \
+  --standalone --toc --toc-depth=3 --number-sections \
   --lua-filter=titlepage.lua \
   --from markdown+tex_math_dollars+tex_math_single_backslash \
   --pdf-engine=xelatex \
@@ -35,6 +38,6 @@ pandoc report.md -o report.pdf \
   -V sansfont="DejaVu Sans" \
   -V monofont="DejaVu Sans Mono" \
   -V lang=ru-RU \
-  -V papersize=a4 -V geometry:margin=2cm
+  -V secnumdepth=3 -V papersize=a4 -V geometry:margin=2cm
 
 echo "Готовый PDF: $root/report/report.pdf"
