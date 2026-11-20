@@ -821,7 +821,7 @@ pandoc report/report.md -o report/report.pdf \
   -V geometry:margin=2cm
 ```
 
-Пакеты для Ubuntu: `sudo apt install pandoc texlive-xetex texlive-lang-cyrillic librsvg2-bin fonts-dejavu-core`. Векторные графики SVG преобразуются автоматически через `rsvg-convert`.
+Пакеты для Ubuntu: `sudo apt install pandoc texlive-xetex texlive-lang-cyrillic lmodern librsvg2-bin fonts-dejavu-core`. Векторные графики SVG преобразуются автоматически через `rsvg-convert`.
 
 ## Локальные запуски
 
