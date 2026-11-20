@@ -1,13 +1,31 @@
-# Heat conduction benchmark results
+# Результаты исследования теплопроводности
 
-Three C++ implementations: sequential (loop), OpenMP, and POSIX threads.
+## Актуальная серия измерений, 2026
 
-Each implementation has results/results.csv with 5 timings per configuration, results/summary.csv with median values, and figures/ containing ready-to-use PNG plots. Root figures/ compares implementations at -O3.
+В отчёте [report/report.md](report/report.md) использованы **6000 измерений** новой серии после исправления L2-нормы, полного интервала измерений и first touch. Измерены 1200 конфигураций, по пять повторений на каждую.
 
-Grids: 512², 1024², 2048², 4096². Unroll factors: 1, 2, 4, 8. Compiler profiles: O2, O3, native, unroll, novec. Pthreads and OpenMP: 1, 2, 4, 8, 16, 18, 36 threads.
+Сетки: 512², 1024², 2048², 4096². Временные шаги: 10000, 2000, 800, 800. Реализации: последовательная, OpenMP, Pthreads. Профили: O2, O3, native, unroll, novec. Группировка циклов q=1,2,4,8, число нитей 1,2,4,8,16,18,36.
 
-OpenMP values for unroll=1 are corrected reruns (Slurm 18488); unroll=2/4/8 come from Slurm 18478. Loop and pthread use jobs 18477 and 18483.
+Файл [results/2026/selected_medians.csv](results/2026/selected_medians.csv) содержит **116 опорных медиан**, использованных для актуальных графиков. Это не полный архив из 6000 строк, и его нельзя считать первичными измерениями.
 
-Important: OpenMP ran twice as many time steps as loop and pthread. Direct wall times are not comparable across implementations. Root time.png shows normalized ns per update. Speedup and efficiency use each parallel implementation's own 1-thread baseline. Sequential speedup/efficiency are undefined.
+### Новые графики
 
-Original time_s values are preserved exactly; MLUPS values are recalculated from time_s, steps and grid size. Original job timestamps and hostnames are not part of the compact import; source archives contain those.
+- [Ускорение OpenMP](figures/2026/speedup_openmp.svg)
+- [Ускорение Pthreads](figures/2026/speedup_pthread.svg)
+- [Время при 36 потоках](figures/2026/time_36.svg)
+- [Время от числа потоков](figures/2026/time_scaling_2048.svg)
+- [Коэффициент группировки q](figures/2026/unroll_2048.svg)
+- [Профили компиляции](figures/2026/compiler_2048.svg)
+- [Сходимость численного решения](figures/2026/error_convergence.svg)
+
+Верификация в режиме debug: [errors/errors_grid_full.csv](errors/errors_grid_full.csv) и две таблицы 4×4 для C- и L2-норм. Из 16 сочетаний десять допустимы по условию устойчивости, шесть отмечены прочерками.
+
+### Команда для PDF
+
+    bash scripts/build_pdf.sh
+
+## Архивная серия
+
+Корневой файл [comparison_summary.csv](comparison_summary.csv) и рисунки в старых каталогах figures/, loop/figures/, openmp/figures/, pthread/figures/ относятся к предыдущей серии измерений. В ней число шагов OpenMP отличалось от числа шагов других реализаций, а определение времени измерений было другим. Архивные результаты нельзя напрямую объединять с актуальными данными.
+
+Подробности старой серии сохранены в истории Git.
