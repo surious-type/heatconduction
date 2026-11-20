@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            pandoc texlive-xetex texlive-lang-cyrillic librsvg2-bin fonts-dejavu-core
+            pandoc texlive-xetex texlive-lang-cyrillic lmodern librsvg2-bin fonts-dejavu-core
       - name: Собрать отчёт
         run: bash scripts/build_pdf.sh
       - name: Сохранить готовый PDF
