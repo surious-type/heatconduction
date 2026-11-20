@@ -19,6 +19,6 @@ pandoc report/report.md -o report/report.pdf \
   -V sansfont="DejaVu Sans" \
   -V monofont="DejaVu Sans Mono" \
   -V lang=ru-RU \
-  -V geometry:margin=2cm
+  -V papersize=a4 -V geometry:margin=2cm
 
 echo "PDF создан: $root/report/report.pdf"
